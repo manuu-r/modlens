@@ -1,8 +1,9 @@
-# Dependabot configuration to update npm packages weekly
+# Dependabot configuration to update pnpm packages weekly
 version: 2
 updates:
+  # GitHub uses the "npm" ecosystem value for pnpm lockfiles.
   - package-ecosystem: "npm"
-    directory: "/" # Location of your package.json and package-lock.json
+    directory: "/" # Location of package.json and pnpm-lock.yaml
     schedule:
       interval: "weekly"
       day: "tuesday"

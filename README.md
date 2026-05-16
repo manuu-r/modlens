@@ -28,10 +28,10 @@ ModLens stores moderation context in Redis for the installed subreddit. Gemini A
 
 ## Development
 
-- `npm run dev`: Start Devvit playtest mode.
-- `npm run build`: Build the web app.
-- `npm run type-check`: Run TypeScript checks.
-- `npm run lint`: Run ESLint.
-- `npm run test`: Run Vitest.
-- `npm run deploy`: Type-check, lint, test, and upload a new Devvit version.
-- `npm run launch`: Upload and publish for review.
+- `pnpm run dev`: Start Devvit playtest mode.
+- `pnpm run build`: Build the web app.
+- `pnpm run type-check`: Run TypeScript checks.
+- `pnpm run lint`: Run ESLint.
+- `pnpm run test`: Run Vitest.
+- `pnpm run deploy`: Type-check, lint, test, and upload a new Devvit version.
+- `pnpm run launch`: Upload and publish for review.
