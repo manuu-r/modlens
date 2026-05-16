@@ -1,0 +1,206 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "mod-lens",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "entry": "index.html",
+        "height": "tall",
+        "inline": true
+      }
+    }
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "permissions": {
+    "redis": true,
+    "reddit": {
+      "enable": true,
+      "scope": "moderator"
+    },
+    "http": {
+      "enable": true,
+      "domains": ["generativelanguage.googleapis.com"]
+    }
+  },
+  "triggers": {
+    "onAppInstall": "/internal/triggers/install",
+    "onAppUpgrade": "/internal/triggers/upgrade",
+    "onPostSubmit": "/internal/triggers/post-submit",
+    "onCommentSubmit": "/internal/triggers/comment-submit",
+    "onPostReport": "/internal/triggers/post-report",
+    "onCommentReport": "/internal/triggers/comment-report",
+    "onModAction": "/internal/triggers/mod-action",
+    "onAutomoderatorFilterPost": "/internal/triggers/automod-post",
+    "onModMail": "/internal/triggers/modmail"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "ModLens: Open queue",
+        "description": "Open ModLens to review queue items with author notes, site tags, and mod log context.",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/open-queue"
+      },
+      {
+        "label": "ModLens: View author context",
+        "description": "Open this author's notes, recent activity, linked sites, and related mod log entries.",
+        "forUserType": "moderator",
+        "location": ["post", "comment"],
+        "endpoint": "/internal/menu/user-context"
+      },
+      {
+        "label": "ModLens: Tag linked site",
+        "description": "Parse this post's link and save a trusted, watchlist, spammy, or scam site tag.",
+        "forUserType": "moderator",
+        "location": "post",
+        "endpoint": "/internal/menu/tag-domain"
+      },
+      {
+        "label": "ModLens: Add author note",
+        "description": "Save a shared note on this author with this post or comment as the reference.",
+        "forUserType": "moderator",
+        "location": ["post", "comment"],
+        "endpoint": "/internal/menu/add-note"
+      },
+      {
+        "label": "ModLens: Create risk rule",
+        "description": "Create an explainable rule that raises queue priority from account, user, site, or report signals.",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/new-rule"
+      },
+      {
+        "label": "ModLens: Configure alerts",
+        "description": "Choose which high-signal backlog, repeat offender, and bad-site alerts are sent.",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/alert-config"
+      }
+    ]
+  },
+  "forms": {
+    "modlens_note": "/internal/form/add-note",
+    "modlens_domain": "/internal/form/tag-domain",
+    "modlens_rule": "/internal/form/rule-builder",
+    "modlens_alerts": "/internal/form/alert-config"
+  },
+  "scheduler": {
+    "tasks": {
+      "modlog-rollup": {
+        "endpoint": "/internal/cron/modlog-rollup",
+        "cron": "0 2 * * *"
+      },
+      "triage-rescore": {
+        "endpoint": "/internal/cron/triage-rescore",
+        "cron": "*/2 * * * *"
+      },
+      "alert-evaluator": {
+        "endpoint": "/internal/cron/alert-evaluator",
+        "cron": "*/5 * * * *"
+      },
+      "backfill-modlog": {
+        "endpoint": "/internal/scheduler/backfill-modlog"
+      },
+      "export-chunk": {
+        "endpoint": "/internal/scheduler/export-chunk"
+      }
+    }
+  },
+  "settings": {
+    "global": {
+      "geminiApiKey": {
+        "type": "string",
+        "label": "Gemini API key",
+        "helpText": "Server-only secret used for optional one-line ModLens insights.",
+        "placeholder": "AIza...",
+        "isSecret": true
+      },
+      "geminiModel": {
+        "type": "string",
+        "label": "Gemini model",
+        "helpText": "Model used for optional one-line ModLens insights.",
+        "defaultValue": "gemini-2.5-flash"
+      }
+    },
+    "subreddit": {
+      "discordWebhookUrl": {
+        "type": "string",
+        "label": "Discord webhook URL (optional)",
+        "validationEndpoint": "/internal/settings/validate-webhook",
+        "defaultValue": ""
+      },
+      "slackWebhookUrl": {
+        "type": "string",
+        "label": "Slack webhook URL (optional)",
+        "validationEndpoint": "/internal/settings/validate-webhook",
+        "defaultValue": ""
+      },
+      "customWebhookUrl": {
+        "type": "string",
+        "label": "Custom webhook URL (optional)",
+        "defaultValue": ""
+      },
+      "highBacklogThreshold": {
+        "type": "number",
+        "label": "High-risk backlog alert threshold",
+        "defaultValue": 25
+      },
+      "historyWindowDefault": {
+        "type": "select",
+        "label": "Default history window",
+        "options": [
+          {
+            "label": "7d",
+            "value": "7"
+          },
+          {
+            "label": "30d",
+            "value": "30"
+          },
+          {
+            "label": "90d",
+            "value": "90"
+          }
+        ],
+        "defaultValue": "30"
+      },
+      "aiMicroInsightsEnabled": {
+        "type": "boolean",
+        "label": "AI one-line insights",
+        "helpText": "Use Gemini for short queue insight lines when the global API key is configured.",
+        "defaultValue": true
+      },
+      "enabledFeatures": {
+        "type": "multiSelect",
+        "label": "Enabled features",
+        "options": [
+          {
+            "label": "Triage board",
+            "value": "triage"
+          },
+          {
+            "label": "Site history",
+            "value": "domains"
+          },
+          {
+            "label": "Smart alerts",
+            "value": "alerts"
+          },
+          {
+            "label": "Mod log insights",
+            "value": "insights"
+          }
+        ],
+        "defaultValue": ["triage", "domains", "alerts", "insights"]
+      }
+    }
+  },
+  "dev": {
+    "subreddit": "mod_lens_dev"
+  }
+}
