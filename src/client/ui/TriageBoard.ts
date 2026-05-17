@@ -1,7 +1,13 @@
 import {
+  applyRemovalReason,
+  claimPresence,
   decideTriage,
   getTriage,
   getTriageContext,
+  listRemovalReasons,
+  releasePresence,
+  touchPresence,
+  type RemovalReasonRecord,
   type TriageBucket,
   type TriageDecision,
   type TriageResponse,
@@ -21,6 +27,27 @@ import {
 
 const buckets: TriageBucket[] = ['high', 'aged', 'normal'];
 
+let cachedReasons: RemovalReasonRecord[] = [];
+let pickerOutsideHandlerInstalled = false;
+
+function installPickerOutsideHandler(): void {
+  if (pickerOutsideHandlerInstalled) return;
+  pickerOutsideHandlerInstalled = true;
+  document.addEventListener(
+    'click',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      for (const picker of document.querySelectorAll<HTMLElement>('.reason-picker')) {
+        if (!picker.classList.contains('hidden') && !picker.parentElement?.contains(target)) {
+          picker.classList.add('hidden');
+        }
+      }
+    },
+    { capture: true },
+  );
+}
+
 export function renderTriageBoard(bucket: TriageBucket = 'high'): View {
   const element = createElement('div', 'stack');
   const controls = createElement('div', 'segmented');
@@ -37,13 +64,19 @@ export function renderTriageBoard(bucket: TriageBucket = 'high'): View {
       content.replaceChildren(loadingPanel(`Loading ${bucket} triage...`));
     }
 
-    void getTriage(bucket, cursor)
-      .then((payload) => {
+    void Promise.all([
+      getTriage(bucket, cursor),
+      cursor ? Promise.resolve(null) : listRemovalReasons().catch(() => ({ reasons: [] as RemovalReasonRecord[] })),
+    ])
+      .then(([payload, reasonsResult]) => {
+        if (reasonsResult) {
+          cachedReasons = reasonsResult.reasons;
+        }
         if (cursor) {
           appendTriagePage(content, payload);
           return;
         }
-        content.replaceChildren(renderTriagePage(bucket, payload, load));
+        content.replaceChildren(renderTriagePage(bucket, payload, cachedReasons, load));
       })
       .catch((error: unknown) => {
         content.replaceChildren(errorPanel(error));
@@ -67,16 +100,19 @@ export function submitTriageDecision(thingId: string, action: TriageDecision): P
 function renderTriagePage(
   bucket: TriageBucket,
   payload: TriageResponse,
+  reasons: RemovalReasonRecord[],
   load: (cursor?: string) => void,
 ): HTMLElement {
   if (payload.items.length === 0) {
-    return emptyPanel('No items in this bucket.');
+    return emptyPanel(
+      `No items in the ${bucket} bucket. Queue fills as new posts, comments, and reports come in — or seed test data via the subreddit's three-dot menu.`,
+    );
   }
 
   const list = el('div', {
     className: 'stack',
     attrs: { 'data-triage-list': bucket },
-    children: [renderBulkToolbar(), ...payload.items.map((item) => renderTriageItem(item))],
+    children: [renderBulkToolbar(), ...payload.items.map((item) => renderTriageItem(item, reasons))],
   });
 
   if (payload.nextCursor) {
@@ -94,7 +130,7 @@ function appendTriagePage(content: HTMLElement, payload: TriageResponse): void {
   if (!list) return;
 
   for (const item of payload.items) {
-    list.append(renderTriageItem(item));
+    list.append(renderTriageItem(item, cachedReasons));
   }
 
   if (payload.nextCursor) {
@@ -127,15 +163,10 @@ function renderLoadMoreButton(cursor: string, load: (cursor?: string) => void): 
   });
 }
 
-function renderTriageItem(item: TriageItem): HTMLElement {
+function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = []): HTMLElement {
   const card = el('div', { className: 'triage-item' });
   card.dataset.thingId = item.thingId;
   card.dataset.author = item.author;
-  const actions: Array<{ label: string; decision: TriageDecision; className: string }> = [
-    { label: 'Approve', decision: 'approve', className: 'button button-accent' },
-    { label: 'Remove', decision: 'remove', className: 'button' },
-    { label: 'Ignore reports', decision: 'ignore', className: 'button button-danger' },
-  ];
 
   const reasonRefs = resolveReasons(item);
   const metaParts: (HTMLElement | string)[] = [
@@ -150,6 +181,32 @@ function renderTriageItem(item: TriageItem): HTMLElement {
     }),
   ];
 
+  const presenceChip = el('span', {
+    className: 'presence-chip',
+    attrs: { 'data-presence': item.thingId },
+  });
+
+  const actionsRow = el('div', { className: 'triage-item-actions' });
+  actionsRow.append(
+    el('button', {
+      className: 'button button-accent',
+      text: 'Approve',
+      onClick: () => {
+        disableDecisionButtons(card);
+        void claimAndDecide(card, item, 'approve').catch(() => enableDecisionButtons(card));
+      },
+    }),
+    renderRemoveButton(card, item, reasons),
+    el('button', {
+      className: 'button button-danger',
+      text: 'Ignore reports',
+      onClick: () => {
+        disableDecisionButtons(card);
+        void claimAndDecide(card, item, 'ignore').catch(() => enableDecisionButtons(card));
+      },
+    }),
+  );
+
   card.append(
     el('div', {
       className: 'list-item-header',
@@ -163,6 +220,7 @@ function renderTriageItem(item: TriageItem): HTMLElement {
               href: `#/users/${encodeURIComponent(item.author)}`,
               text: `u/${item.author}`,
             }),
+            presenceChip,
           ],
         }),
         el('span', { className: 'muted-small', text: formatRelative(item.createdAt) }),
@@ -177,24 +235,106 @@ function renderTriageItem(item: TriageItem): HTMLElement {
     }),
     el('div', { className: 'row', children: metaParts }),
     renderContextSummary(item.thingId),
-    el('div', {
-      className: 'triage-item-actions',
-      children: actions.map((action) =>
-        el('button', {
-          className: action.className,
-          text: action.label,
-          onClick: () => {
-            disableDecisionButtons(card);
-            void decideTriage(item.thingId, action.decision)
-              .then(() => card.remove())
-              .catch(() => enableDecisionButtons(card));
-          },
-        }),
-      ),
-    }),
+    actionsRow,
   );
 
+  // claim presence when this item is visible
+  void claimPresence(item.thingId)
+    .then(({ claimed, modName }) => {
+      if (!claimed) {
+        presenceChip.replaceChildren(chip(`Being reviewed by u/${modName}`, 'aged'));
+      }
+      startPresenceHeartbeat(item.thingId);
+    })
+    .catch(() => undefined);
+
   return card;
+}
+
+function renderRemoveButton(card: HTMLElement, item: TriageItem, reasons: RemovalReasonRecord[]): HTMLElement {
+  if (reasons.length === 0) {
+    return el('button', {
+      className: 'button',
+      text: 'Remove',
+      onClick: () => {
+        disableDecisionButtons(card);
+        void claimAndDecide(card, item, 'remove').catch(() => enableDecisionButtons(card));
+      },
+    });
+  }
+
+  // Remove with reason picker
+  const picker = el('div', { className: 'reason-picker hidden' });
+  const toggleButton = el('button', {
+    className: 'button',
+    text: 'Remove ▾',
+    title: 'Remove this queued item.',
+    onClick: (event) => {
+      event.stopPropagation();
+      picker.classList.toggle('hidden');
+    },
+  });
+
+  const quickRemove = el('button', {
+    className: 'reason-picker-item',
+    text: 'Remove (no reason)',
+    onClick: () => {
+      picker.classList.add('hidden');
+      disableDecisionButtons(card);
+      void claimAndDecide(card, item, 'remove').catch(() => enableDecisionButtons(card));
+    },
+  });
+  picker.append(quickRemove);
+
+  for (const reason of reasons) {
+    const reasonBtn = el('button', {
+      className: 'reason-picker-item',
+      text: reason.title,
+      title: reason.autoComment ? 'Will post comment' : reason.dmUser ? 'Will DM user' : 'Remove only',
+      onClick: () => {
+        picker.classList.add('hidden');
+        disableDecisionButtons(card);
+        void applyRemovalReason(reason.id, {
+          thingId: item.thingId,
+          author: item.author,
+          ...(item.title !== undefined ? { title: item.title } : {}),
+        })
+          .then(() => {
+            void releasePresence(item.thingId).catch(() => undefined);
+            card.remove();
+          })
+          .catch(() => enableDecisionButtons(card));
+      },
+    });
+    picker.append(reasonBtn);
+  }
+
+  const wrapper = el('div', {
+    className: 'reason-picker-wrapper',
+    children: [toggleButton, picker],
+  });
+
+  installPickerOutsideHandler();
+
+  return wrapper;
+}
+
+async function claimAndDecide(card: HTMLElement, item: TriageItem, action: TriageDecision): Promise<void> {
+  await claimPresence(item.thingId).catch(() => undefined);
+  await decideTriage(item.thingId, action);
+  void releasePresence(item.thingId).catch(() => undefined);
+  card.remove();
+}
+
+function startPresenceHeartbeat(itemId: string): void {
+  const intervalId = window.setInterval(() => {
+    if (!document.querySelector(`[data-thing-id="${itemId}"]`)) {
+      clearInterval(intervalId);
+      void releasePresence(itemId).catch(() => undefined);
+      return;
+    }
+    void touchPresence(itemId).catch(() => undefined);
+  }, 60_000);
 }
 
 function resolveReasons(item: TriageItem): ReasonRef[] {
@@ -232,7 +372,7 @@ function renderContextSummary(thingId: string): HTMLElement {
       container.replaceChildren(buildContextBlock(summary));
     })
     .catch(() => {
-      container.remove();
+      container.replaceChildren(chip('Context unavailable', 'aged'));
     });
   return container;
 }

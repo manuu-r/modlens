@@ -987,6 +987,109 @@ pre {
   }
 }
 
+/* --- Reason picker -------------------------------------------------------- */
+
+.reason-picker-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.reason-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 220px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+}
+
+.reason-picker.hidden {
+  display: none;
+}
+
+.reason-picker-item {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reason-picker-item:hover {
+  background: var(--panel-soft);
+}
+
+/* --- Presence chip -------------------------------------------------------- */
+
+.presence-chip {
+  display: inline-flex;
+}
+
+/* --- Form fields ---------------------------------------------------------- */
+
+.form-field {
+  display: grid;
+  gap: 6px;
+}
+
+.form-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.form-field input,
+.reason-body-input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  width: 100%;
+}
+
+.reason-body-input {
+  resize: vertical;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.form-field input:focus,
+.reason-body-input:focus {
+  outline: none;
+  border-color: var(--text);
+}
+
+.reason-body-preview {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--panel-soft);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted);
+  max-height: 80px;
+  overflow: hidden;
+}
+
+/* --- Metric variant ------------------------------------------------------- */
+
+.metric-danger .metric-value {
+  color: var(--danger);
+}
+
 @media (max-width: 420px) {
   .toolbar,
   .triage-item-actions,

@@ -3,6 +3,7 @@ import { renderAlertsConfig } from './AlertsConfig';
 import { renderAuditLog } from './AuditLog';
 import { renderDomainPanel, renderDomainsIndex } from './DomainPanel';
 import { renderModLogInsights } from './ModLogInsights';
+import { renderRemovalReasonEditor } from './RemovalReasonEditor';
 import { renderRulesEditor } from './RulesEditor';
 import { renderSettings } from './Settings';
 import { renderTriageBoard } from './TriageBoard';
@@ -19,9 +20,7 @@ const navItems: NavItem[] = [
   { label: 'Users', href: '#/users' },
   { label: 'Mod log', href: '#/audit' },
   { label: 'Sites', href: '#/sites' },
-  { label: 'Rules', href: '#/rules' },
-  { label: 'Alerts', href: '#/alerts' },
-  { label: 'Insights', href: '#/insights' },
+  { label: 'Removal', href: '#/removal' },
   { label: 'Settings', href: '#/settings' },
 ];
 
@@ -150,6 +149,10 @@ export class Shell {
 
     if (route === 'rules') {
       return renderRulesEditor();
+    }
+
+    if (route === 'removal') {
+      return renderRemovalReasonEditor();
     }
 
     if (route === 'audit') {

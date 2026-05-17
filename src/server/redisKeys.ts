@@ -34,6 +34,8 @@ export const redisKeys = {
   idem: (eventId: string) => `idem:${eventId}`,
   microInsight: (kind: string, id: string, fingerprint: string) =>
     `ai:micro:${kind}:${encodeURIComponent(id)}:${fingerprint}`,
+  removalReasons: () => 'removal:reasons',
+  presenceItem: (itemId: string) => `presence:item:${itemId}`,
   dashboardPostId: () => 'dashboard:postId',
   navigationIntent: (viewer: string) => `nav:intent:${cleanUser(viewer)}`,
   exportChunk: (token: string, chunk: number) => `export:${token}:${chunk}`,

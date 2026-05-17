@@ -77,24 +77,23 @@ export async function listBucket(
   cursor?: string,
   limit = 25
 ): Promise<{ items: TriageItem[]; nextCursor?: string; total: number }> {
-  const max = cursor ? Number(cursor) - 1 : Date.now() + 1;
-  const rows = await redis.zRange(redisKeys.triageBucket(bucket), max, 0, {
-    by: 'score',
+  const offset = cursor ? Math.max(0, Number(cursor)) : 0;
+  const rows = await redis.zRange(redisKeys.triageBucket(bucket), 0, -1, {
+    by: 'rank',
     reverse: true,
-    limit: { offset: 0, count: limit + 1 },
   });
+  const slice = rows.slice(offset, offset + limit + 1);
   const items: TriageItem[] = [];
-  for (const row of rows.slice(0, limit)) {
+  for (const row of slice.slice(0, limit)) {
     const item = await getItem(row.member);
     if (item) {
       items.push(item);
     }
   }
-  const last = items.at(-1);
   return {
     items,
     total: await redis.zCard(redisKeys.triageBucket(bucket)),
-    ...(rows.length > limit && last ? { nextCursor: String(last.createdAt) } : {}),
+    ...(slice.length > limit ? { nextCursor: String(offset + limit) } : {}),
   };
 }
 

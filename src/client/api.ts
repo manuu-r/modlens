@@ -215,8 +215,8 @@ export function untagDomain(host: string): Promise<DomainResponse> {
   return request<DomainResponse>(`/api/domain/${encodeURIComponent(host)}/tag`, { method: 'DELETE' });
 }
 
-export function getTriage(bucket: TriageBucket, cursor?: string): Promise<TriageResponse> {
-  return request<TriageResponse>(withQuery('/api/triage', { bucket, cursor }));
+export function getTriage(bucket: TriageBucket, cursor?: string, limit?: number): Promise<TriageResponse> {
+  return request<TriageResponse>(withQuery('/api/triage', { bucket, cursor, limit }));
 }
 
 export function decideTriage(
@@ -311,4 +311,64 @@ export function startExport(body: {
 
 export function getExportChunk(token: string, cursor?: string): Promise<ExportChunkResponse> {
   return request<ExportChunkResponse>(withQuery(`/api/export/${encodeURIComponent(token)}`, { cursor }));
+}
+
+// Removal reason templates
+
+export type RemovalReasonRecord = {
+  id: string;
+  title: string;
+  bodyTemplate: string;
+  autoComment: boolean;
+  dmUser: boolean;
+  createdAt: number;
+  createdBy: string;
+};
+
+export function listRemovalReasons(): Promise<{ reasons: RemovalReasonRecord[] }> {
+  return request<{ reasons: RemovalReasonRecord[] }>('/api/removal-reasons');
+}
+
+export function createRemovalReason(body: {
+  title: string;
+  bodyTemplate: string;
+  autoComment: boolean;
+  dmUser: boolean;
+}): Promise<{ reason: RemovalReasonRecord }> {
+  return post<{ reason: RemovalReasonRecord }>('/api/removal-reasons', body);
+}
+
+export function deleteRemovalReason(id: string): Promise<{ deleted: boolean; ok: boolean }> {
+  return request<{ deleted: boolean; ok: boolean }>(`/api/removal-reasons/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function applyRemovalReason(
+  reasonId: string,
+  body: { thingId: string; author?: string; title?: string },
+): Promise<{ applied: boolean }> {
+  return post<{ applied: boolean }>(`/api/removal-reasons/${encodeURIComponent(reasonId)}/apply`, body);
+}
+
+// Queue presence (collision prevention)
+
+export type PresenceEntry = { modName: string; since: number };
+
+export function claimPresence(itemId: string): Promise<{ claimed: boolean; modName: string }> {
+  return post<{ claimed: boolean; modName: string }>(`/api/presence/${encodeURIComponent(itemId)}/claim`, {});
+}
+
+export function touchPresence(itemId: string): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/api/presence/${encodeURIComponent(itemId)}/touch`, {});
+}
+
+export function releasePresence(itemId: string): Promise<{ released: boolean }> {
+  return request<{ released: boolean }>(`/api/presence/${encodeURIComponent(itemId)}/claim`, {
+    method: 'DELETE',
+  });
+}
+
+export function getPresenceBatch(ids: string[]): Promise<{ presence: Record<string, PresenceEntry> }> {
+  return post<{ presence: Record<string, PresenceEntry> }>('/api/presence/batch', { ids });
 }

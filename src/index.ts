@@ -8,6 +8,8 @@ import { bootstrapApi } from './routes/api/bootstrap';
 import { domainApi } from './routes/api/domain';
 import { exportApi } from './routes/api/export';
 import { modlogApi } from './routes/api/modlog';
+import { presenceApi } from './routes/api/presence';
+import { removalReasonsApi } from './routes/api/removalReasons';
 import { rulesApi } from './routes/api/rules';
 import { triageApi } from './routes/api/triage';
 import { userApi } from './routes/api/user';
@@ -31,6 +33,8 @@ api.route('/rules', rulesApi);
 api.route('/alerts', alertsApi);
 api.route('/audit', auditApi);
 api.route('/export', exportApi);
+api.route('/removal-reasons', removalReasonsApi);
+api.route('/presence', presenceApi);
 
 internal.route('/menu', menu);
 internal.route('/form', forms);

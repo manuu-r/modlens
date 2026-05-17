@@ -11,6 +11,16 @@ async function inlineRemovalCount(name: string): Promise<number> {
   return numberFrom(summary.removalCount);
 }
 
+function isUserNotFound(error: unknown): boolean {
+  const message = error instanceof Error ? `${error.message} ${(error as { details?: string }).details ?? ''}` : String(error);
+  return /404/.test(message) || /not\s*found/i.test(message);
+}
+
+function logReddit(scope: string, error: unknown): void {
+  if (isUserNotFound(error)) return;
+  console.warn(scope, error);
+}
+
 export async function buildDigest(name: string, window: DigestWindow): Promise<UserDigest> {
   return memo<UserDigest>(`digest:${name}:${window}`, 300, async () => {
     const sinceMs = Date.now() - WINDOW_DAYS[window] * 86_400_000;
@@ -34,7 +44,7 @@ export async function buildDigest(name: string, window: DigestWindow): Promise<U
         }
       }
     } catch (error) {
-      console.warn('digest: getPostsByUser failed', error);
+      logReddit('digest: getPostsByUser failed', error);
     }
 
     try {
@@ -46,7 +56,7 @@ export async function buildDigest(name: string, window: DigestWindow): Promise<U
         comments.push({ score: c.score, createdAt: ts, removed: c.removed });
       }
     } catch (error) {
-      console.warn('digest: getCommentsByUser failed', error);
+      logReddit('digest: getCommentsByUser failed', error);
     }
 
     const allActivity = [...posts, ...comments];
@@ -115,7 +125,7 @@ export async function buildRecentActivity(name: string, limit = 10): Promise<Rec
       });
     }
   } catch (error) {
-    console.warn('recentActivity: posts failed', error);
+    logReddit('recentActivity: posts failed', error);
   }
 
   try {
@@ -133,7 +143,7 @@ export async function buildRecentActivity(name: string, limit = 10): Promise<Rec
       });
     }
   } catch (error) {
-    console.warn('recentActivity: comments failed', error);
+    logReddit('recentActivity: comments failed', error);
   }
 
   return out.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
