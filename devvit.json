@@ -80,6 +80,27 @@
         "forUserType": "moderator",
         "location": "subreddit",
         "endpoint": "/internal/menu/alert-config"
+      },
+      {
+        "label": "[DEV] Seed test data",
+        "description": "Populate the queue, notes, and domains with fixture data for testing. Dev builds only.",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/dev-seed"
+      },
+      {
+        "label": "[DEV] Clear seed data",
+        "description": "Remove all fixture data seeded by the dev seed action.",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/dev-clear"
+      },
+      {
+        "label": "[DEV] Seed status",
+        "description": "Show how many seed fixtures are currently in Redis.",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/dev-status"
       }
     ]
   },

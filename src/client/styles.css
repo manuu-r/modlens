@@ -987,6 +987,33 @@ pre {
   }
 }
 
+/* --- Micro insight (AI / heuristic) -------------------------------------- */
+
+.micro-insight {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  background: var(--panel-soft);
+  border-radius: 4px;
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+.micro-insight.micro-high {
+  border-left-color: var(--danger);
+}
+
+.micro-insight.micro-medium {
+  border-left-color: var(--warn);
+}
+
+.micro-insight.micro-low {
+  border-left-color: var(--success);
+}
+
 /* --- Reason picker -------------------------------------------------------- */
 
 .reason-picker-wrapper {

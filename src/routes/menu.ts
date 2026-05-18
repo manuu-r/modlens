@@ -273,3 +273,38 @@ menu.post('/tag-domain', async (c) => {
   });
 });
 
+menu.post('/dev-seed', async (c) => {
+  try {
+    const { seedAll } = await import('../server/seedData.js');
+    const counts = await seedAll();
+    return c.json<UiResponse>({
+      showToast: `Seeded: ${counts.triage} queue items, ${counts.notes} notes, ${counts.domains} domains.`,
+    });
+  } catch (error) {
+    return c.json<UiResponse>({ showToast: `Seed failed: ${String(error)}` });
+  }
+});
+
+menu.post('/dev-clear', async (c) => {
+  try {
+    const { clearSeedData } = await import('../server/seedData.js');
+    const result = await clearSeedData();
+    return c.json<UiResponse>({
+      showToast: `Cleared ${result.removed} seed queue items and associated notes/domains.`,
+    });
+  } catch (error) {
+    return c.json<UiResponse>({ showToast: `Clear failed: ${String(error)}` });
+  }
+});
+
+menu.post('/dev-status', async (c) => {
+  try {
+    const { getSeedCounts } = await import('../server/seedData.js');
+    const counts = await getSeedCounts();
+    return c.json<UiResponse>({
+      showToast: `Seed status: ${counts.triage} queue items, ${counts.notes} notes, ${counts.domains} domains.`,
+    });
+  } catch (error) {
+    return c.json<UiResponse>({ showToast: `Status failed: ${String(error)}` });
+  }
+});

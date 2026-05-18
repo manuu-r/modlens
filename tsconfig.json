@@ -7,7 +7,7 @@
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitOverride": true,
-    "types": ["node"],
+    "types": ["node", "vite/client"],
     "noUncheckedIndexedAccess": true,
     "noUncheckedSideEffectImports": true,
     "noUnusedLocals": true,

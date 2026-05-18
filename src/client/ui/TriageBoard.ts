@@ -4,6 +4,7 @@ import {
   decideTriage,
   getTriage,
   getTriageContext,
+  getTriageInsight,
   listRemovalReasons,
   releasePresence,
   touchPresence,
@@ -12,7 +13,7 @@ import {
   type TriageDecision,
   type TriageResponse,
 } from '../api';
-import type { ContextSummary, ReasonRef, TriageItem } from '../../shared/types';
+import type { ContextSummary, MicroInsight, ReasonRef, TriageItem } from '../../shared/types';
 import {
   chip,
   createElement,
@@ -234,6 +235,7 @@ function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = [])
       ],
     }),
     el('div', { className: 'row', children: metaParts }),
+    renderMicroInsight(item.thingId),
     renderContextSummary(item.thingId),
     actionsRow,
   );
@@ -360,6 +362,37 @@ function driverChip(ref: ReasonRef): HTMLElement {
     return el('span', { className: 'chip', text: ref.label, title: `Source fact: ${ref.sourceFact}` });
   }
   return chip(ref.label);
+}
+
+function renderMicroInsight(thingId: string): HTMLElement {
+  const container = el('div', { className: 'micro-insight muted-small' });
+  void getTriageInsight(thingId)
+    .then(({ insight }) => {
+      container.replaceChildren(buildMicroInsightBlock(insight));
+    })
+    .catch(() => {
+      container.remove();
+    });
+  return container;
+}
+
+function buildMicroInsightBlock(insight: MicroInsight): HTMLElement {
+  const sourceKind = insight.source === 'gemini' ? 'trusted' : undefined;
+  return el('div', {
+    className: `micro-insight micro-${insight.severity}`,
+    children: [
+      chip(insight.source === 'gemini' ? 'AI' : 'heuristic', sourceKind),
+      chip(insight.label, severityChipKind(insight.severity)),
+      el('span', { text: insight.line }),
+    ],
+  });
+}
+
+function severityChipKind(severity: MicroInsight['severity']): string | undefined {
+  if (severity === 'high') return 'high';
+  if (severity === 'medium') return 'aged';
+  if (severity === 'low') return 'trusted';
+  return undefined;
 }
 
 function renderContextSummary(thingId: string): HTMLElement {
