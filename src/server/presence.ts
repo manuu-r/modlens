@@ -8,19 +8,52 @@ export interface PresenceEntry {
   since: number;
 }
 
-export async function claimItem(itemId: string, modName: string): Promise<boolean> {
+export interface PresenceClaim {
+  claimed: boolean;
+  modName: string;
+}
+
+function encodePresence(modName: string, since = Date.now()): string {
+  return JSON.stringify({ modName, since } satisfies PresenceEntry);
+}
+
+function presenceExpiration(): Date {
+  return new Date(Date.now() + PRESENCE_TTL_SECONDS * 1000);
+}
+
+export async function claimItem(itemId: string, modName: string): Promise<PresenceClaim> {
   const key = redisKeys.presenceItem(itemId);
+  const created = await redis.set(key, encodePresence(modName), {
+    nx: true,
+    expiration: presenceExpiration(),
+  });
+  if (created === 'OK') {
+    return { claimed: true, modName };
+  }
+
   const existing = await redis.get(key);
   if (existing) {
     const entry = tryDecode(existing);
-    if (entry && entry.modName !== modName) {
-      return false;
+    if (entry?.modName === modName) {
+      await redis.set(key, encodePresence(modName, entry.since), {
+        expiration: presenceExpiration(),
+      });
+      return { claimed: true, modName };
+    }
+    if (entry) {
+      return { claimed: false, modName: entry.modName };
     }
   }
-  await redis.set(key, JSON.stringify({ modName, since: Date.now() } satisfies PresenceEntry), {
-    expiration: new Date(Date.now() + PRESENCE_TTL_SECONDS * 1000),
+
+  const retried = await redis.set(key, encodePresence(modName), {
+    nx: true,
+    expiration: presenceExpiration(),
   });
-  return true;
+  if (retried === 'OK') {
+    return { claimed: true, modName };
+  }
+  const owner = tryDecode((await redis.get(key)) ?? '');
+  return { claimed: false, modName: owner?.modName ?? modName };
 }
 
 export async function touchItem(itemId: string, modName: string): Promise<void> {
@@ -28,8 +61,8 @@ export async function touchItem(itemId: string, modName: string): Promise<void> 
   const existing = await redis.get(key);
   const entry = existing ? tryDecode(existing) : null;
   if (!entry || entry.modName !== modName) return;
-  await redis.set(key, JSON.stringify({ modName, since: entry.since } satisfies PresenceEntry), {
-    expiration: new Date(Date.now() + PRESENCE_TTL_SECONDS * 1000),
+  await redis.set(key, encodePresence(modName, entry.since), {
+    expiration: presenceExpiration(),
   });
 }
 

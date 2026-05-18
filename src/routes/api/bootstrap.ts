@@ -4,6 +4,7 @@ import type { NavigationIntent } from '../../shared/types';
 import { decode } from '../../server/json';
 import { requireModerator } from '../../server/modAuth';
 import { redisKeys } from '../../server/redisKeys';
+import { getConfig } from '../../server/alerts';
 
 export const bootstrapApi = new Hono();
 const NAVIGATION_INTENT_MAX_AGE_MS = 2 * 60 * 1000;
@@ -31,6 +32,7 @@ bootstrapApi.get('/', async (c) => {
     'alerts',
     'insights',
   ];
+  const alertConfig = await getConfig();
   return c.json({
     subreddit: context.subredditName ?? '',
     subredditName: context.subredditName ?? '',
@@ -44,11 +46,11 @@ bootstrapApi.get('/', async (c) => {
     ...(isFreshNavigationIntent(navigationIntent) ? { navigationIntent } : {}),
     alerts: {
       configured: Boolean(
-        (await settings.get<string>('discordWebhookUrl')) ||
-          (await settings.get<string>('slackWebhookUrl')) ||
-          (await settings.get<string>('customWebhookUrl'))
+        alertConfig.discordWebhookUrl ||
+          alertConfig.slackWebhookUrl ||
+          alertConfig.customWebhookUrl
       ),
-      highBacklogThreshold: (await settings.get<number>('highBacklogThreshold')) ?? 25,
+      highBacklogThreshold: alertConfig.highBacklogThreshold,
     },
     ai: {
       microInsightsEnabled: (await settings.get<boolean>('aiMicroInsightsEnabled')) ?? true,

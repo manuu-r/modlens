@@ -43,13 +43,24 @@ export type AlertType =
   | 'test';
 
 export async function getConfig(): Promise<AlertConfig> {
+  const saved = decode<Partial<AlertConfig> | null>(
+    await redis.hGet(redisKeys.alertConfig(), 'config'),
+    null,
+  );
   const discordWebhookUrl = (await settings.get<string>('discordWebhookUrl')) || '';
   const slackWebhookUrl = (await settings.get<string>('slackWebhookUrl')) || '';
   const customWebhookUrl = (await settings.get<string>('customWebhookUrl')) || '';
-  const threshold = (await settings.get<number>('highBacklogThreshold')) ?? defaultConfig.highBacklogThreshold;
+  const threshold =
+    saved?.highBacklogThreshold ??
+    (await settings.get<number>('highBacklogThreshold')) ??
+    defaultConfig.highBacklogThreshold;
+  const enabledTypes = Array.isArray(saved?.enabledTypes)
+    ? saved.enabledTypes.filter((type): type is string => typeof type === 'string')
+    : defaultConfig.enabledTypes;
   return {
     ...defaultConfig,
     highBacklogThreshold: threshold,
+    enabledTypes,
     ...(discordWebhookUrl ? { discordWebhookUrl } : {}),
     ...(slackWebhookUrl ? { slackWebhookUrl } : {}),
     ...(customWebhookUrl ? { customWebhookUrl } : {}),

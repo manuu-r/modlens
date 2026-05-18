@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { redis, scheduler, settings } from '@devvit/web/server';
-import { fireAlert } from '../server/alerts';
+import { redis, scheduler } from '@devvit/web/server';
+import { fireAlert, getConfig } from '../server/alerts';
 import { runExport, type ExportRequest } from '../server/exporter';
 import { backfillChunk } from '../server/modlog';
 import { redisKeys } from '../server/redisKeys';
@@ -21,7 +21,7 @@ cron.post('/triage-rescore', async (c) => {
 });
 
 cron.post('/alert-evaluator', async (c) => {
-  const threshold = (await settings.get<number>('highBacklogThreshold')) ?? 25;
+  const { highBacklogThreshold: threshold } = await getConfig();
   const highCount = await redis.zCard(redisKeys.triageBucket('high'));
   if (highCount >= threshold) {
     await fireAlert(

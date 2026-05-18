@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { decideItem, listBucket } from '../../server/triage';
 import { requireModerator } from '../../server/modAuth';
 import type { TriageBucket, TriageDecision } from '../../shared/types';
+import { claimItem, releaseItem } from '../../server/presence';
 
 export const triageApi = new Hono();
 
@@ -25,6 +26,15 @@ triageApi.post('/:thingId/decision', async (c) => {
   const moderator = await requireModerator();
   const body = await c.req.json<Record<string, unknown>>();
   const decision = parseDecision(body.action);
-  const item = await decideItem(c.req.param('thingId'), decision, moderator.user);
-  return c.json({ item, decision });
+  const thingId = c.req.param('thingId');
+  const claim = await claimItem(thingId, moderator.user);
+  if (!claim.claimed) {
+    return c.json({ message: `This item is being reviewed by u/${claim.modName}.` }, 409);
+  }
+  try {
+    const item = await decideItem(thingId, decision, moderator.user);
+    return c.json({ item, decision });
+  } finally {
+    await releaseItem(thingId, moderator.user);
+  }
 });

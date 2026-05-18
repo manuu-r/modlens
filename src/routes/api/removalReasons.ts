@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { applyReason, createReason, deleteReason, listReasons } from '../../server/removalReasons';
 import { requireModerator } from '../../server/modAuth';
 import { getItem } from '../../server/triage';
+import { claimItem, releaseItem } from '../../server/presence';
 
 export const removalReasonsApi = new Hono();
 
@@ -37,15 +38,23 @@ removalReasonsApi.post('/:id/apply', async (c) => {
   if (!thingId) {
     return c.json({ error: 'thingId is required' }, 400);
   }
+  const claim = await claimItem(thingId, mod.user);
+  if (!claim.claimed) {
+    return c.json({ message: `This item is being reviewed by u/${claim.modName}.` }, 409);
+  }
   const item = await getItem(thingId);
-  await applyReason(
-    {
-      reasonId: c.req.param('id'),
-      thingId,
-      author: item?.author ?? (typeof body.author === 'string' ? body.author : ''),
-      title: item?.title ?? (typeof body.title === 'string' ? body.title : undefined),
-    },
-    mod.user,
-  );
-  return c.json({ applied: true });
+  try {
+    await applyReason(
+      {
+        reasonId: c.req.param('id'),
+        thingId,
+        author: item?.author ?? (typeof body.author === 'string' ? body.author : ''),
+        title: item?.title ?? (typeof body.title === 'string' ? body.title : undefined),
+      },
+      mod.user,
+    );
+    return c.json({ applied: true });
+  } finally {
+    await releaseItem(thingId, mod.user);
+  }
 });

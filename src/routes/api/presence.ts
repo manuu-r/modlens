@@ -6,8 +6,7 @@ export const presenceApi = new Hono();
 
 presenceApi.post('/:itemId/claim', async (c) => {
   const mod = await requireModerator();
-  const claimed = await claimItem(c.req.param('itemId'), mod.user);
-  return c.json({ claimed, modName: mod.user });
+  return c.json(await claimItem(c.req.param('itemId'), mod.user));
 });
 
 presenceApi.post('/:itemId/touch', async (c) => {

@@ -59,6 +59,9 @@ export async function tagDomain(
   const tagInput = typeof input === 'string' ? { tag: input, notes } : input;
   const current = await getDomain(host);
   const now = Date.now();
+  if (current.tag && current.tag !== tagInput.tag) {
+    await redis.zRem(redisKeys.domainsByTag(current.tag), [current.host]);
+  }
   await redis.hSet(redisKeys.domain(current.host), {
     tag: tagInput.tag,
     taggedBy: actor,

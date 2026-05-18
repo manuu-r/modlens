@@ -16,6 +16,48 @@ export type EnqueueInput = {
   reports?: string[];
 };
 
+type BucketCursor = {
+  score: number;
+  member?: string;
+};
+
+type BucketRow = {
+  member: string;
+  score: number;
+};
+
+function encodeBucketCursor(row: BucketRow): string {
+  return JSON.stringify({ score: row.score, member: row.member } satisfies Required<BucketCursor>);
+}
+
+function parseBucketCursor(cursor: string | undefined): BucketCursor | null {
+  if (!cursor) return null;
+  const numeric = Number(cursor);
+  if (Number.isFinite(numeric)) {
+    return { score: numeric };
+  }
+  try {
+    const parsed = JSON.parse(cursor) as Partial<BucketCursor>;
+    const score = parsed.score;
+    if (typeof score !== 'number' || !Number.isFinite(score)) {
+      return null;
+    }
+    return {
+      score,
+      ...(typeof parsed.member === 'string' ? { member: parsed.member } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isAfterCursor(row: BucketRow, cursor: BucketCursor | null): boolean {
+  if (!cursor) return true;
+  if (row.score < cursor.score) return true;
+  if (row.score > cursor.score) return false;
+  return cursor.member ? row.member < cursor.member : false;
+}
+
 async function storeItem(item: TriageItem): Promise<void> {
   await redis.hSet(redisKeys.triageItem(item.thingId), { item: encode(item) });
   await redis.zAdd(redisKeys.triageItems(), { member: item.thingId, score: item.score });
@@ -45,18 +87,85 @@ async function recordRuleMatches(thingId: string, matchedRuleIds: string[], ts: 
   }
 }
 
-export async function enqueueItem(input: EnqueueInput): Promise<TriageItem> {
+export async function listBucket(
+  bucket: TriageBucket,
+  cursor?: string,
+  limit = 25
+): Promise<{ items: TriageItem[]; nextCursor?: string; total: number }> {
+  const requestedLimit = Number.isFinite(limit) ? limit : 25;
+  const pageSize = Math.min(Math.max(requestedLimit, 1), 100);
+  const parsedCursor = parseBucketCursor(cursor);
+  const items: TriageItem[] = [];
+  const itemRows: BucketRow[] = [];
+  let offset = 0;
+  const batchSize = Math.max(pageSize + 1, 50);
+
+  while (items.length < pageSize + 1) {
+    const rows = await redis.zRange(
+      redisKeys.triageBucket(bucket),
+      parsedCursor?.score ?? Number.MAX_SAFE_INTEGER,
+      0,
+      {
+        by: 'score',
+        reverse: true,
+        limit: { offset, count: batchSize },
+      },
+    );
+    if (rows.length === 0) {
+      break;
+    }
+
+    for (const row of rows) {
+      if (!isAfterCursor(row, parsedCursor)) {
+        continue;
+      }
+      const item = await getItem(row.member);
+      if (item) {
+        items.push(item);
+        itemRows.push(row);
+        if (items.length >= pageSize + 1) {
+          break;
+        }
+      }
+    }
+
+    offset += rows.length;
+    if (rows.length < batchSize) {
+      break;
+    }
+  }
+
+  const pageItems = items.slice(0, pageSize);
+  const lastRow = itemRows[Math.min(pageItems.length, itemRows.length) - 1];
+  return {
+    items: pageItems,
+    total: await redis.zCard(redisKeys.triageBucket(bucket)),
+    ...(items.length > pageSize && lastRow ? { nextCursor: encodeBucketCursor(lastRow) } : {}),
+  };
+}
+
+function mergeReports(existing: string[] | undefined, incoming: string[] | undefined): string[] | undefined {
+  if (!existing?.length) return incoming?.length ? incoming : undefined;
+  if (!incoming?.length) return existing;
+  return incoming.length > existing.length ? incoming : existing;
+}
+
+export async function upsertScoredItem(input: EnqueueInput): Promise<TriageItem> {
+  const existing = await getItem(input.id);
+  const url = input.url ?? existing?.url;
+  const title = input.title ?? existing?.title;
+  const reports = mergeReports(existing?.reports, input.reports);
   const base: TriageItem = {
     thingId: input.id,
     kind: input.kind,
     author: input.author,
     score: 0,
     bucket: 'normal',
-    createdAt: input.createdAt,
+    createdAt: existing?.createdAt ?? input.createdAt,
     reasons: [],
-    ...(input.url === undefined ? {} : { url: input.url }),
-    ...(input.title === undefined ? {} : { title: input.title }),
-    ...(input.reports === undefined ? {} : { reports: input.reports }),
+    ...(url === undefined ? {} : { url }),
+    ...(title === undefined ? {} : { title }),
+    ...(reports === undefined ? {} : { reports }),
   };
   const facts = await buildFacts(base);
   const scored = await scoreFacts(facts);
@@ -67,34 +176,17 @@ export async function enqueueItem(input: EnqueueInput): Promise<TriageItem> {
     reasons: scored.reasons,
     ...(scored.reasonRefs.length > 0 ? { reasonRefs: scored.reasonRefs } : {}),
   };
+
+  if (existing && existing.bucket !== item.bucket) {
+    await redis.zRem(redisKeys.triageBucket(existing.bucket), [item.thingId]);
+  }
   await storeItem(item);
   await recordRuleMatches(item.thingId, scored.matchedRuleIds, item.createdAt);
   return item;
 }
 
-export async function listBucket(
-  bucket: TriageBucket,
-  cursor?: string,
-  limit = 25
-): Promise<{ items: TriageItem[]; nextCursor?: string; total: number }> {
-  const offset = cursor ? Math.max(0, Number(cursor)) : 0;
-  const rows = await redis.zRange(redisKeys.triageBucket(bucket), 0, -1, {
-    by: 'rank',
-    reverse: true,
-  });
-  const slice = rows.slice(offset, offset + limit + 1);
-  const items: TriageItem[] = [];
-  for (const row of slice.slice(0, limit)) {
-    const item = await getItem(row.member);
-    if (item) {
-      items.push(item);
-    }
-  }
-  return {
-    items,
-    total: await redis.zCard(redisKeys.triageBucket(bucket)),
-    ...(slice.length > limit ? { nextCursor: String(offset + limit) } : {}),
-  };
+export async function enqueueItem(input: EnqueueInput): Promise<TriageItem> {
+  return upsertScoredItem(input);
 }
 
 export async function decideItem(
@@ -153,4 +245,3 @@ export async function rescoreTopN(n = 200): Promise<number> {
   }
   return changed;
 }
-

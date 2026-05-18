@@ -194,7 +194,10 @@ function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = [])
       text: 'Approve',
       onClick: () => {
         disableDecisionButtons(card);
-        void claimAndDecide(card, item, 'approve').catch(() => enableDecisionButtons(card));
+        void claimAndDecide(card, item, 'approve').catch((error: unknown) => {
+          enableDecisionButtons(card);
+          showCardError(card, error);
+        });
       },
     }),
     renderRemoveButton(card, item, reasons),
@@ -203,7 +206,10 @@ function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = [])
       text: 'Ignore reports',
       onClick: () => {
         disableDecisionButtons(card);
-        void claimAndDecide(card, item, 'ignore').catch(() => enableDecisionButtons(card));
+        void claimAndDecide(card, item, 'ignore').catch((error: unknown) => {
+          enableDecisionButtons(card);
+          showCardError(card, error);
+        });
       },
     }),
   );
@@ -245,7 +251,10 @@ function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = [])
     .then(({ claimed, modName }) => {
       if (!claimed) {
         presenceChip.replaceChildren(chip(`Being reviewed by u/${modName}`, 'aged'));
+        card.dataset.presenceClaimed = 'false';
+        return;
       }
+      card.dataset.presenceClaimed = 'true';
       startPresenceHeartbeat(item.thingId);
     })
     .catch(() => undefined);
@@ -260,7 +269,10 @@ function renderRemoveButton(card: HTMLElement, item: TriageItem, reasons: Remova
       text: 'Remove',
       onClick: () => {
         disableDecisionButtons(card);
-        void claimAndDecide(card, item, 'remove').catch(() => enableDecisionButtons(card));
+        void claimAndDecide(card, item, 'remove').catch((error: unknown) => {
+          enableDecisionButtons(card);
+          showCardError(card, error);
+        });
       },
     });
   }
@@ -283,7 +295,10 @@ function renderRemoveButton(card: HTMLElement, item: TriageItem, reasons: Remova
     onClick: () => {
       picker.classList.add('hidden');
       disableDecisionButtons(card);
-      void claimAndDecide(card, item, 'remove').catch(() => enableDecisionButtons(card));
+      void claimAndDecide(card, item, 'remove').catch((error: unknown) => {
+        enableDecisionButtons(card);
+        showCardError(card, error);
+      });
     },
   });
   picker.append(quickRemove);
@@ -296,16 +311,15 @@ function renderRemoveButton(card: HTMLElement, item: TriageItem, reasons: Remova
       onClick: () => {
         picker.classList.add('hidden');
         disableDecisionButtons(card);
-        void applyRemovalReason(reason.id, {
-          thingId: item.thingId,
-          author: item.author,
-          ...(item.title !== undefined ? { title: item.title } : {}),
-        })
+        void claimAndApplyRemovalReason(card, item, reason.id)
           .then(() => {
             void releasePresence(item.thingId).catch(() => undefined);
             card.remove();
           })
-          .catch(() => enableDecisionButtons(card));
+          .catch((error: unknown) => {
+            enableDecisionButtons(card);
+            showCardError(card, error);
+          });
       },
     });
     picker.append(reasonBtn);
@@ -322,10 +336,40 @@ function renderRemoveButton(card: HTMLElement, item: TriageItem, reasons: Remova
 }
 
 async function claimAndDecide(card: HTMLElement, item: TriageItem, action: TriageDecision): Promise<void> {
-  await claimPresence(item.thingId).catch(() => undefined);
+  const claim = await claimPresence(item.thingId);
+  if (!claim.claimed) {
+    throw new Error(`This item is being reviewed by u/${claim.modName}.`);
+  }
   await decideTriage(item.thingId, action);
   void releasePresence(item.thingId).catch(() => undefined);
   card.remove();
+}
+
+async function claimAndApplyRemovalReason(
+  card: HTMLElement,
+  item: TriageItem,
+  reasonId: string,
+): Promise<void> {
+  const claim = await claimPresence(item.thingId);
+  if (!claim.claimed) {
+    throw new Error(`This item is being reviewed by u/${claim.modName}.`);
+  }
+  await applyRemovalReason(reasonId, {
+    thingId: item.thingId,
+    author: item.author,
+    ...(item.title !== undefined ? { title: item.title } : {}),
+  });
+  card.dataset.presenceClaimed = 'true';
+}
+
+function showCardError(card: HTMLElement, error: unknown): void {
+  card.querySelector('.triage-action-error')?.remove();
+  card.append(
+    el('div', {
+      className: 'triage-action-error muted-small',
+      text: error instanceof Error ? error.message : String(error),
+    }),
+  );
 }
 
 function startPresenceHeartbeat(itemId: string): void {

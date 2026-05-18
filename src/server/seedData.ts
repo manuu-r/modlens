@@ -1,6 +1,7 @@
 import { context, reddit, redis } from '@devvit/web/server';
 import type { T3 } from '@devvit/shared-types/tid.js';
 import type { DomainEntry, Note, TriageBucket, TriageItem } from '../shared/types';
+import type { DomainTag } from '../shared/tags';
 import { once } from './idempotency';
 import { encode } from './json';
 import { redisKeys } from './redisKeys';
@@ -123,7 +124,7 @@ const NOTES: NoteFixture[] = [
 
 type DomainFixture = {
   host: string;
-  tag: string;
+  tag: DomainTag;
   taggedBy: string;
   notes: string;
   postCount: number;
@@ -202,7 +203,7 @@ async function seedDomains(): Promise<number> {
   for (const d of DOMAINS) {
     const entry: DomainEntry = {
       host: d.host,
-      tag: d.tag as DomainEntry['tag'],
+      tag: d.tag,
       taggedBy: d.taggedBy,
       taggedAt: ts,
       notes: d.notes,

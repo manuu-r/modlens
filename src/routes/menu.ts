@@ -11,6 +11,25 @@ import { canOpenAuthorContext, resolveRedditUsername } from '../server/userIdent
 export const menu = new Hono();
 const NAVIGATION_INTENT_TTL_MS = 2 * 60 * 1000;
 
+function devSeedActionsEnabled(): boolean {
+  return (
+    process.env.NODE_ENV === 'development' ||
+    process.env.NODE_ENV === 'test' ||
+    process.env.MODLENS_ENABLE_DEV_SEED === 'true'
+  );
+}
+
+async function requireDevSeedAccess(): Promise<UiResponse | null> {
+  await requireModerator();
+  if (devSeedActionsEnabled()) {
+    return null;
+  }
+  return {
+    showToast:
+      'Dev seed actions are disabled for this build. Set MODLENS_ENABLE_DEV_SEED=true in a development environment to enable them.',
+  };
+}
+
 async function ensureModLensPost(): Promise<{ id: string; url: string }> {
   const existing = await redis.get(redisKeys.dashboardPostId());
   if (existing) {
@@ -275,6 +294,8 @@ menu.post('/tag-domain', async (c) => {
 
 menu.post('/dev-seed', async (c) => {
   try {
+    const denied = await requireDevSeedAccess();
+    if (denied) return c.json<UiResponse>(denied);
     const { seedAll } = await import('../server/seedData.js');
     const counts = await seedAll();
     return c.json<UiResponse>({
@@ -287,6 +308,8 @@ menu.post('/dev-seed', async (c) => {
 
 menu.post('/dev-clear', async (c) => {
   try {
+    const denied = await requireDevSeedAccess();
+    if (denied) return c.json<UiResponse>(denied);
     const { clearSeedData } = await import('../server/seedData.js');
     const result = await clearSeedData();
     return c.json<UiResponse>({
@@ -299,6 +322,8 @@ menu.post('/dev-clear', async (c) => {
 
 menu.post('/dev-status', async (c) => {
   try {
+    const denied = await requireDevSeedAccess();
+    if (denied) return c.json<UiResponse>(denied);
     const { getSeedCounts } = await import('../server/seedData.js');
     const counts = await getSeedCounts();
     return c.json<UiResponse>({

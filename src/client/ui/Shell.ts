@@ -20,6 +20,9 @@ const navItems: NavItem[] = [
   { label: 'Users', href: '#/users' },
   { label: 'Mod log', href: '#/audit' },
   { label: 'Sites', href: '#/sites' },
+  { label: 'Rules', href: '#/rules' },
+  { label: 'Alerts', href: '#/alerts' },
+  { label: 'Insights', href: '#/insights' },
   { label: 'Removal', href: '#/removal' },
   { label: 'Settings', href: '#/settings' },
 ];

@@ -10,6 +10,7 @@ import { seedDefaults } from '../server/rules';
 import { enqueueItem, type EnqueueInput } from '../server/triage';
 import { getUserSummary } from '../server/notes';
 import { normalizeHost } from '../server/redisKeys';
+import type { ThingKind } from '../shared/types';
 
 export const triggers = new Hono();
 
@@ -22,6 +23,18 @@ const stringAt = (record: AnyRecord, key: string): string | undefined =>
 const numberAt = (record: AnyRecord, key: string): number | undefined =>
   typeof record[key] === 'number' ? record[key] : undefined;
 const nested = (record: AnyRecord, key: string): AnyRecord => asRecord(record[key]);
+
+function reportCount(record: AnyRecord): number {
+  return Math.max(1, Math.floor(numberAt(record, 'numReports') ?? 1));
+}
+
+function reportReasons(record: AnyRecord, reason: string): string[] {
+  return Array.from({ length: reportCount(record) }, () => reason);
+}
+
+function reportEventKey(kind: ThingKind, id: string, record: AnyRecord, reason: string): string {
+  return `evt:report:${kind}:${id}:${reportCount(record)}:${encodeURIComponent(reason).slice(0, 120)}`;
+}
 
 async function ensureModLensPost(): Promise<void> {
   if (await redis.get(redisKeys.dashboardPostId())) {
@@ -130,15 +143,18 @@ triggers.post('/post-report', async (c) => {
   const input = await c.req.json<AnyRecord>();
   const post = nested(input, 'post');
   const id = stringAt(post, 'id') ?? stringAt(input, 'postId') ?? crypto.randomUUID();
-  if (await once(`evt:report:${id}`)) {
+  const reason = stringAt(input, 'reason') ?? 'reported';
+  if (await once(reportEventKey('post', id, post, reason))) {
     const url = stringAt(post, 'url');
+    const title = stringAt(post, 'title');
     await enqueueAndAlert({
       id,
       kind: 'post',
       author: stringAt(post, 'authorName') ?? '[deleted]',
       createdAt: numberAt(post, 'createdAt') ?? Date.now(),
-      reports: ['reported'],
+      reports: reportReasons(post, reason),
       ...(url ? { url } : {}),
+      ...(title ? { title } : {}),
     });
   }
   return c.json<TriggerResponse>({});
@@ -148,13 +164,14 @@ triggers.post('/comment-report', async (c) => {
   const input = await c.req.json<AnyRecord>();
   const comment = nested(input, 'comment');
   const id = stringAt(comment, 'id') ?? stringAt(input, 'commentId') ?? crypto.randomUUID();
-  if (await once(`evt:report:${id}`)) {
+  const reason = stringAt(input, 'reason') ?? 'reported';
+  if (await once(reportEventKey('comment', id, comment, reason))) {
     await enqueueAndAlert({
       id,
       kind: 'comment',
-      author: stringAt(comment, 'authorName') ?? '[deleted]',
+      author: stringAt(comment, 'authorName') ?? stringAt(comment, 'author') ?? '[deleted]',
       createdAt: numberAt(comment, 'createdAt') ?? Date.now(),
-      reports: ['reported'],
+      reports: reportReasons(comment, reason),
     });
   }
   return c.json<TriggerResponse>({});
