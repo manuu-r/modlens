@@ -103,12 +103,11 @@ export async function listBucket(
   while (items.length < pageSize + 1) {
     const rows = await redis.zRange(
       redisKeys.triageBucket(bucket),
-      parsedCursor?.score ?? Number.MAX_SAFE_INTEGER,
-      0,
+      offset,
+      offset + batchSize - 1,
       {
-        by: 'score',
+        by: 'rank',
         reverse: true,
-        limit: { offset, count: batchSize },
       },
     );
     if (rows.length === 0) {

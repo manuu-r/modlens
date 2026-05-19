@@ -28,7 +28,9 @@ ModLens stores moderation context in Redis for the installed subreddit. Gemini A
 
 ## Development
 
-- `pnpm run dev`: Start Devvit playtest mode.
+- `pnpm run dev`: Start Devvit playtest mode without dev fixture menu actions.
+- `MODLENS_ENABLE_DEV_SEED=true pnpm run dev`: Start playtest mode with dev fixture menu actions.
+- `pnpm run dev:seed`: Shortcut for playtest mode with `MODLENS_ENABLE_DEV_SEED=true`.
 - `pnpm run build`: Build the web app.
 - `pnpm run type-check`: Run TypeScript checks.
 - `pnpm run lint`: Run ESLint.

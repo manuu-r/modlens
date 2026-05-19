@@ -9,7 +9,8 @@
   "scripts": {
     "build": "vite build",
     "deploy": "pnpm run type-check && pnpm run lint && pnpm run test && devvit upload",
-    "dev": "devvit playtest",
+    "dev": "node scripts/devvit-config.mjs playtest",
+    "dev:seed": "MODLENS_ENABLE_DEV_SEED=true node scripts/devvit-config.mjs playtest",
     "launch": "pnpm run deploy && devvit publish",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "login": "devvit login",

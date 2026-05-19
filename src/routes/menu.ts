@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { MenuItemRequest, UiResponse } from '@devvit/web/shared';
-import { context, reddit, redis } from '@devvit/web/server';
+import { context, reddit, redis, settings } from '@devvit/web/server';
 import { isT1, isT3, type T3 } from '@devvit/shared-types/tid.js';
 import type { NavigationIntent } from '../shared/types';
 import { encode } from '../server/json';
@@ -10,18 +10,22 @@ import { canOpenAuthorContext, resolveRedditUsername } from '../server/userIdent
 
 export const menu = new Hono();
 const NAVIGATION_INTENT_TTL_MS = 2 * 60 * 1000;
+const DEV_SEED_SETTING = 'modlensDevSeedActionsEnabled';
 
-function devSeedActionsEnabled(): boolean {
-  return (
+async function devSeedActionsEnabled(): Promise<boolean> {
+  if (
     process.env.NODE_ENV === 'development' ||
     process.env.NODE_ENV === 'test' ||
     process.env.MODLENS_ENABLE_DEV_SEED === 'true'
-  );
+  ) {
+    return true;
+  }
+  return (await settings.get<boolean>(DEV_SEED_SETTING)) === true;
 }
 
 async function requireDevSeedAccess(): Promise<UiResponse | null> {
   await requireModerator();
-  if (devSeedActionsEnabled()) {
+  if (await devSeedActionsEnabled()) {
     return null;
   }
   return {
