@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@devvit/reddit": "0.12.23",
-    "@devvit/redis": "^0.12.23",
+    "@devvit/redis": "^0.12.24",
     "@devvit/shared-types": "0.12.23",
     "@devvit/start": "0.12.23",
     "@devvit/web": "0.12.23",
