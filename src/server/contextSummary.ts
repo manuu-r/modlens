@@ -10,9 +10,9 @@ import type {
 import { fireAlert } from './alerts';
 import { listSiteItems } from './domains';
 import { listNotes } from './notes';
-import { authorSiteRepeats, repeatRemovals, siteCluster, siteSpike } from './patterns';
-import { normalizeHost } from './redisKeys';
-import { buildFacts } from './rules';
+import { authorSiteRepeats, repeatRemovals } from './patterns';
+import { isRedditHost, normalizeHost } from './redisKeys';
+import { buildFacts, scoreFacts } from './rules';
 import { getItem } from './triage';
 
 export async function getTriageContext(thingId: string): Promise<ContextSummary | null> {
@@ -20,13 +20,21 @@ export async function getTriageContext(thingId: string): Promise<ContextSummary 
   if (!item) return null;
 
   const facts = await buildFacts(item);
+  const scored = await scoreFacts(facts);
+  const displayItem: TriageItem = {
+    ...item,
+    score: scored.score,
+    bucket: scored.bucket,
+    reasons: scored.reasons,
+    ...(scored.reasonRefs.length > 0 ? { reasonRefs: scored.reasonRefs } : {}),
+  };
   const notes = await listNotes(item.author).catch(() => []);
-  const severity = computeSeverity(item, facts);
-  const drivers = collectDrivers(item, facts);
-  const factsLine = composeFacts(item, facts, notes.length);
-  const suggestion = suggestNextStep(item, facts, severity, drivers, notes.length);
+  const severity = computeSeverity(displayItem, facts);
+  const drivers = collectDrivers(displayItem, facts);
+  const factsLine = composeFacts(displayItem, facts, notes.length);
+  const suggestion = suggestNextStep(displayItem, facts, severity, drivers, notes.length);
 
-  const patterns = await detectPatterns(item, facts);
+  const patterns = await detectPatterns(displayItem, facts);
 
   return {
     thingId: item.thingId,
@@ -43,12 +51,10 @@ async function detectPatterns(item: TriageItem, facts: FactBag): Promise<Pattern
   const patterns: PatternMatch[] = [];
 
   const host = item.url ? normalizeHost(item.url) : null;
-  if (host) {
+  if (host && !isRedditHost(host)) {
     const siteItems = await listSiteItems(host, 300).catch(() => []);
 
     const p1 = authorSiteRepeats(item.author, host, siteItems);
-    const p2 = siteCluster(host, siteItems);
-    const p3 = siteSpike(host, siteItems);
 
     if (p1) {
       patterns.push(p1);
@@ -56,22 +62,6 @@ async function detectPatterns(item: TriageItem, facts: FactBag): Promise<Pattern
         'pattern.author_site_repeats',
         { author: item.author, host, count: siteItems.filter((i) => i.author === item.author).length },
         { site: `#/sites/${encodeURIComponent(host)}`, author: `#/users/${encodeURIComponent(item.author)}` },
-      ).catch(() => undefined);
-    }
-    if (p2) {
-      patterns.push(p2);
-      void fireAlert(
-        'pattern.new_account_cluster',
-        { host, label: p2.label },
-        { site: `#/sites/${encodeURIComponent(host)}` },
-      ).catch(() => undefined);
-    }
-    if (p3) {
-      patterns.push(p3);
-      void fireAlert(
-        'pattern.site_spike',
-        { host, label: p3.label },
-        { site: `#/sites/${encodeURIComponent(host)}` },
       ).catch(() => undefined);
     }
   }
@@ -131,41 +121,38 @@ function collectDrivers(item: TriageItem, facts: FactBag): ReasonRef[] {
 }
 
 function composeFacts(item: TriageItem, facts: FactBag, noteCount: number): string {
-  const parts: string[] = [`u/${item.author}`];
-  const fragments: string[] = [];
+  const userFragments: string[] = [];
+  const postFragments: string[] = [];
   const removals = facts['user.summary.removalCount'];
   const spam = facts['user.summary.spamCount'];
   const tag = facts['post.domain.tag'];
   const siteRemovals = facts['post.domain.removedCount'];
   const ageDays = facts['account.ageDays'];
   const reports = facts['item.reports'];
+  const host = item.url ? normalizeHost(item.url) : null;
 
-  if (removals > 0) fragments.push(`${removals} prior ${removals === 1 ? 'removal' : 'removals'}`);
-  if (spam > 0) fragments.push(`${spam} spam ${spam === 1 ? 'note' : 'notes'}`);
-  if (noteCount > 0 && spam === 0) fragments.push(`${noteCount} mod ${noteCount === 1 ? 'note' : 'notes'}`);
-
-  if (fragments.length === 0) {
-    fragments.push('no prior actions');
-  }
-
-  parts.push('has', joinWithAnd(fragments) + '.');
-
+  postFragments.push(`${reports} ${reports === 1 ? 'report' : 'reports'}`);
   if (tag) {
-    const tail = siteRemovals > 0 ? ` (${siteRemovals} removed)` : '';
-    parts.push(`Posted ${tag} site${tail}.`);
-  } else if (item.url) {
-    const host = normalizeHost(item.url);
-    if (host) parts.push(`Posted to ${host}.`);
+    const tail = siteRemovals > 0 ? ` with ${siteRemovals} prior site removals` : '';
+    postFragments.push(`${tag} site${tail}`);
+  } else if (host && !isRedditHost(host)) {
+    postFragments.push(`external link to ${host}`);
+  } else if (item.kind === 'post') {
+    postFragments.push('Reddit/self post');
+  } else {
+    postFragments.push('comment');
   }
 
-  if (ageDays <= 7 && ageDays >= 0) {
-    parts.push(`Account is ${ageDays}d old.`);
-  }
-  if (reports > 0) {
-    parts.push(`${reports} ${reports === 1 ? 'report' : 'reports'} on this item.`);
+  if (removals > 0) userFragments.push(`${removals} prior ${removals === 1 ? 'removal' : 'removals'}`);
+  if (spam > 0) userFragments.push(`${spam} spam ${spam === 1 ? 'note' : 'notes'}`);
+  if (noteCount > 0 && spam === 0) userFragments.push(`${noteCount} mod ${noteCount === 1 ? 'note' : 'notes'}`);
+  if (ageDays >= 0 && ageDays <= 30) userFragments.push(`${ageDays}d old account`);
+
+  if (userFragments.length === 0) {
+    userFragments.push('no prior removals or notes');
   }
 
-  return parts.join(' ');
+  return `Post: ${joinWithAnd(postFragments)}. User: u/${item.author} has ${joinWithAnd(userFragments)}.`;
 }
 
 function joinWithAnd(values: string[]): string {
@@ -185,11 +172,12 @@ function suggestNextStep(
   const removals = facts['user.summary.removalCount'];
   const siteRemovals = facts['post.domain.removedCount'];
   const author = item.author;
-  const host = item.url ? normalizeHost(item.url) : null;
+  const rawHost = item.url ? normalizeHost(item.url) : null;
+  const host = rawHost && !isRedditHost(rawHost) ? rawHost : null;
 
   if ((tag === 'spammy' || tag === 'scam') && removals >= 2) {
     return {
-      text: 'Likely spam — confirm a rule violation and remove.',
+      text: 'Likely remove if the post violates a rule.',
       intent: 'remove',
     };
   }
@@ -211,6 +199,19 @@ function suggestNextStep(
   }
 
   if (severity === 'high' || item.bucket === 'high') {
+    if (removals >= 3) {
+      return {
+        text: 'Review this post against rules; prior removals raise risk.',
+        intent: 'review',
+        ...(author !== '[deleted]' ? { href: `#/users/${encodeURIComponent(author)}` } : {}),
+      };
+    }
+    if (facts['item.reports'] >= 2) {
+      return {
+        text: 'Check report reasons, then decide.',
+        intent: 'review',
+      };
+    }
     return {
       text: 'Investigate — see drivers and decide.',
       intent: 'review',
@@ -219,9 +220,9 @@ function suggestNextStep(
 
   if (severity === 'medium') {
     return {
-      text: 'Skim mod log, then decide.',
+      text: 'Review author context, then decide.',
       intent: 'review',
-      ...(author !== '[deleted]' ? { href: `#/audit?target=${encodeURIComponent(author)}` } : {}),
+      ...(author !== '[deleted]' ? { href: `#/users/${encodeURIComponent(author)}` } : {}),
     };
   }
 

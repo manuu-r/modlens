@@ -1,5 +1,4 @@
 import {
-  getAudit,
   getDomain,
   getSiteItems,
   getSiteUsers,
@@ -9,7 +8,7 @@ import {
   type SiteAuthor,
 } from '../api';
 import { DOMAIN_TAG_LABELS, DOMAIN_TAGS, type DomainTag } from '../../shared/tags';
-import type { AuditEntry, DomainEntry, TriageItem } from '../../shared/types';
+import type { DomainEntry, TriageItem } from '../../shared/types';
 import {
   cell,
   chip,
@@ -103,7 +102,7 @@ export function renderDomainPanel(host: string): View {
 
   return {
     title: host,
-    subtitle: 'Site tag, removal history, and related audit data.',
+    subtitle: 'Site tag, removal history, and related queue data.',
     element,
   };
 }
@@ -169,7 +168,6 @@ function renderDomainContent(host: string, domain: DomainEntry, reload: () => vo
     renderTagPanel(host, domain, reload),
     renderSiteAuthorsPanel(host),
     renderSiteItemsPanel(host),
-    renderSiteModlogPanel(host),
   );
 }
 
@@ -226,11 +224,7 @@ function renderItemsTable(items: TriageItem[]): HTMLElement {
   return table(
     ['Title', 'Author', 'Bucket', 'Created'],
     items.map((item) => [
-      el('a', {
-        className: 'host-link',
-        href: `#/audit?target=${encodeURIComponent(item.thingId)}`,
-        text: item.title ?? `(${item.kind})`,
-      }),
+      el('span', { text: item.title ?? `(${item.kind})` }),
       el('a', {
         className: 'host-link',
         href: `#/users/${encodeURIComponent(item.author)}`,
@@ -238,46 +232,6 @@ function renderItemsTable(items: TriageItem[]): HTMLElement {
       }),
       chip(item.bucket, item.bucket),
       cell(formatRelative(item.createdAt)),
-    ]),
-  );
-}
-
-function renderSiteModlogPanel(host: string): HTMLElement {
-  const container = el('div', { children: [loadingPanel('Loading mod log...')] });
-  void getAudit(undefined, { site: host })
-    .then(({ entries }) => {
-      container.replaceChildren(
-        panel(
-          row(
-            el('h2', { text: 'Mod log for this site' }),
-            el('a', {
-              className: 'host-link',
-              href: `#/audit?site=${encodeURIComponent(host)}`,
-              text: 'Open full mod log',
-            }),
-          ),
-          entries.length
-            ? renderModlogTable(entries)
-            : el('p', { className: 'muted', text: 'No mod actions recorded for this site.' }),
-        ),
-      );
-    })
-    .catch((error: unknown) => container.replaceChildren(errorPanel(error)));
-  return container;
-}
-
-function renderModlogTable(entries: AuditEntry[]): HTMLElement {
-  return table(
-    ['Action', 'Target', 'Actor', 'When'],
-    entries.slice(0, 10).map((entry) => [
-      chip(entry.action),
-      el('span', { text: entry.target }),
-      el('a', {
-        className: 'host-link',
-        href: `#/audit?actor=${encodeURIComponent(entry.actor)}`,
-        text: entry.actor,
-      }),
-      cell(formatRelative(entry.ts)),
     ]),
   );
 }

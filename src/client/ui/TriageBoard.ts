@@ -1,7 +1,10 @@
 import {
   applyRemovalReason,
+  addItemNote,
   claimPresence,
+  deleteItemNote,
   decideTriage,
+  listItemNotes,
   getTriage,
   getTriageContext,
   getTriageInsight,
@@ -13,7 +16,7 @@ import {
   type TriageDecision,
   type TriageResponse,
 } from '../api';
-import type { ContextSummary, MicroInsight, ReasonRef, TriageItem } from '../../shared/types';
+import type { ContextSummary, ItemNote, MicroInsight, ReasonRef, TriageItem } from '../../shared/types';
 import {
   chip,
   createElement,
@@ -23,6 +26,7 @@ import {
   formatRelative,
   loadingPanel,
   normalizeHostInput,
+  row,
   type View,
 } from './viewHelpers';
 
@@ -175,11 +179,6 @@ function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = [])
     chip(`score ${item.score}`),
     ...joinDriverChips(reasonRefs),
     ...(item.reports?.length ? [chip(`${item.reports.length} reports`, 'aged')] : []),
-    el('a', {
-      className: 'chip',
-      href: `#/audit?target=${encodeURIComponent(item.author)}`,
-      text: 'mod log',
-    }),
   ];
 
   const presenceChip = el('span', {
@@ -241,8 +240,8 @@ function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = [])
       ],
     }),
     el('div', { className: 'row', children: metaParts }),
-    renderMicroInsight(item.thingId),
-    renderContextSummary(item.thingId),
+    renderLazyReviewContext(item.thingId),
+    renderItemNotes(item),
     actionsRow,
   );
 
@@ -260,6 +259,84 @@ function renderTriageItem(item: TriageItem, reasons: RemovalReasonRecord[] = [])
     .catch(() => undefined);
 
   return card;
+}
+
+function renderItemNotes(item: TriageItem): HTMLElement {
+  const container = el('div', {
+    className: 'item-notes muted-small',
+    children: [el('span', { text: 'Item notes: loading...' })],
+  });
+  const load = (): void => {
+    void listItemNotes(item.thingId)
+      .then(({ notes }) => {
+        container.replaceChildren(buildItemNotesBlock(item, notes, load));
+      })
+      .catch(() => {
+        container.replaceChildren(buildItemNotesBlock(item, [], load));
+      });
+  };
+  load();
+  return container;
+}
+
+function buildItemNotesBlock(item: TriageItem, notes: ItemNote[], reload: () => void): HTMLElement {
+  const input = el('textarea');
+  const save = el('button', { className: 'button', text: 'Add item note' });
+  input.rows = 2;
+  input.placeholder = 'Hidden context for other mods';
+  save.type = 'button';
+  save.addEventListener('click', () => {
+    const text = input.value.trim();
+    if (!text) return;
+    save.setAttribute('disabled', 'true');
+    void addItemNote(item.thingId, {
+      kind: item.kind,
+      text,
+      ...(item.url ? { refUrl: item.url } : {}),
+    })
+      .then(() => reload())
+      .catch(() => save.removeAttribute('disabled'));
+  });
+
+  return el('div', {
+    className: 'item-notes-block',
+    children: [
+      notes.length
+        ? el('div', {
+            className: 'list',
+            children: notes.map((note) => renderItemNoteRow(note, reload)),
+          })
+        : el('span', { className: 'muted-small', text: 'No item notes yet.' }),
+      el('div', { className: 'note-form compact-note-form', children: [input, save] }),
+    ],
+  });
+}
+
+function renderItemNoteRow(note: ItemNote, reload: () => void): HTMLElement {
+  const remove = el('button', {
+    className: 'button button-danger',
+    text: 'Delete',
+    onClick: () => {
+      remove.setAttribute('disabled', 'true');
+      void deleteItemNote(note.thingId, note.id)
+        .then(reload)
+        .catch(() => remove.removeAttribute('disabled'));
+    },
+  });
+  return el('div', {
+    className: 'list-item item-note-row',
+    children: [
+      el('div', {
+        className: 'list-item-header',
+        children: [
+          row(chip('item note', 'Trusted'), el('span', { text: formatRelative(note.createdAt) })),
+          remove,
+        ],
+      }),
+      el('div', { className: 'list-item-body', text: note.text }),
+      el('div', { className: 'list-item-meta', text: `by u/${note.authorMod}` }),
+    ],
+  });
 }
 
 function renderRemoveButton(card: HTMLElement, item: TriageItem, reasons: RemovalReasonRecord[]): HTMLElement {
@@ -408,15 +485,35 @@ function driverChip(ref: ReasonRef): HTMLElement {
   return chip(ref.label);
 }
 
-function renderMicroInsight(thingId: string): HTMLElement {
-  const container = el('div', { className: 'micro-insight muted-small' });
-  void getTriageInsight(thingId)
-    .then(({ insight }) => {
-      container.replaceChildren(buildMicroInsightBlock(insight));
-    })
-    .catch(() => {
-      container.remove();
-    });
+function renderLazyReviewContext(thingId: string): HTMLElement {
+  const container = el('div', { className: 'stack compact' });
+  const loadButton = el('button', {
+    className: 'button button-small',
+    text: 'Load context',
+    onClick: () => {
+      loadButton.setAttribute('disabled', 'true');
+      loadButton.textContent = 'Loading context...';
+      void Promise.allSettled([getTriageInsight(thingId), getTriageContext(thingId)]).then(
+        ([insightResult, contextResult]) => {
+          const children: HTMLElement[] = [];
+          if (insightResult.status === 'fulfilled') {
+            children.push(buildMicroInsightBlock(insightResult.value.insight));
+          }
+          if (contextResult.status === 'fulfilled') {
+            children.push(buildContextBlock(contextResult.value.summary));
+          }
+          if (children.length === 0) {
+            loadButton.removeAttribute('disabled');
+            loadButton.textContent = 'Load context';
+            container.append(chip('Context unavailable', 'aged'));
+            return;
+          }
+          container.replaceChildren(...children);
+        },
+      );
+    },
+  });
+  container.append(loadButton);
   return container;
 }
 
@@ -425,7 +522,7 @@ function buildMicroInsightBlock(insight: MicroInsight): HTMLElement {
   return el('div', {
     className: `micro-insight micro-${insight.severity}`,
     children: [
-      chip(insight.source === 'gemini' ? 'AI' : 'heuristic', sourceKind),
+      chip(insight.source === 'gemini' ? 'AI' : 'rules', sourceKind),
       chip(insight.label, severityChipKind(insight.severity)),
       el('span', { text: insight.line }),
     ],
@@ -437,21 +534,6 @@ function severityChipKind(severity: MicroInsight['severity']): string | undefine
   if (severity === 'medium') return 'aged';
   if (severity === 'low') return 'trusted';
   return undefined;
-}
-
-function renderContextSummary(thingId: string): HTMLElement {
-  const container = el('div', {
-    className: 'context-summary muted-small',
-    text: 'Context: loading...',
-  });
-  void getTriageContext(thingId)
-    .then(({ summary }) => {
-      container.replaceChildren(buildContextBlock(summary));
-    })
-    .catch(() => {
-      container.replaceChildren(chip('Context unavailable', 'aged'));
-    });
-  return container;
 }
 
 function buildContextBlock(summary: ContextSummary): HTMLElement {
@@ -532,9 +614,17 @@ function renderItemUrlLinks(url: string | undefined): (HTMLElement | string)[] {
   if (!url) return [];
 
   const host = normalizeHostInput(url);
+  const showHost =
+    host &&
+    host !== 'reddit.com' &&
+    !host.endsWith('.reddit.com') &&
+    host !== 'redd.it' &&
+    !host.endsWith('.redd.it') &&
+    host !== 'redditmedia.com' &&
+    !host.endsWith('.redditmedia.com');
   return [
     ' ',
-    ...(host
+    ...(showHost
       ? [
           el('a', {
             className: 'host-link',

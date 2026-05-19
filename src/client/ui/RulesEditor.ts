@@ -1,5 +1,5 @@
-import { deleteRule, dryrunRule, getRuleMatches, listRules } from '../api';
-import type { Condition, RuleConfig, RuleDryRunResult, TriageItem } from '../../shared/types';
+import { deleteRule, dryrunRule, getRuleDecisions, getRuleMatches, listRules } from '../api';
+import type { Condition, DecisionLogEntry, RuleConfig, RuleDryRunResult, TriageItem } from '../../shared/types';
 import {
   cell,
   chip,
@@ -34,6 +34,7 @@ export function renderRulesEditor(): View {
       }),
     ),
     content,
+    renderDecisionLogPanel(),
   );
   load();
 
@@ -42,6 +43,41 @@ export function renderRulesEditor(): View {
     subtitle: 'Explainable queue rules for account, user, site, and report signals.',
     element,
   };
+}
+
+function renderDecisionLogPanel(): HTMLElement {
+  const container = el('div', { children: [loadingPanel('Loading recent decisions...')] });
+  void getRuleDecisions(25)
+    .then(({ decisions }) => {
+      container.replaceChildren(
+        panel(
+          el('h2', { text: 'Recent automated decisions' }),
+          decisions.length
+            ? table(
+                ['When', 'Item', 'Source', 'Score', 'Bucket', 'Why'],
+                decisions.map(renderDecisionRow),
+              )
+            : el('p', { className: 'muted', text: 'No automated decisions recorded yet.' }),
+        ),
+      );
+    })
+    .catch((error: unknown) => container.replaceChildren(errorPanel(error)));
+  return container;
+}
+
+function renderDecisionRow(entry: DecisionLogEntry): HTMLElement[] {
+  return [
+    cell(formatRelative(entry.ts)),
+    el('a', {
+      className: 'host-link',
+      href: `#/users/${encodeURIComponent(entry.author)}`,
+      text: `u/${entry.author}`,
+    }),
+    chip(entry.source, entry.source === 'ai' ? 'Trusted' : undefined),
+    cell(`${entry.scoreBefore} -> ${entry.scoreAfter}`),
+    cell(`${entry.bucketBefore} -> ${entry.bucketAfter}`),
+    cell(entry.reasons.slice(0, 3).join(', ') || entry.insight?.line || 'No rule matched'),
+  ];
 }
 
 function renderRulesList(rules: RuleConfig[], reload: () => void): HTMLElement {
@@ -148,11 +184,7 @@ function renderAffectedBy(items: TriageItem[]): HTMLElement {
       table(
         ['Item', 'Author', 'Bucket', 'Created'],
         items.map((item) => [
-          el('a', {
-            className: 'host-link',
-            href: `#/audit?target=${encodeURIComponent(item.thingId)}`,
-            text: item.title ?? `(${item.kind})`,
-          }),
+          el('span', { text: item.title ?? `(${item.kind})` }),
           el('a', {
             className: 'host-link',
             href: `#/users/${encodeURIComponent(item.author)}`,
@@ -221,11 +253,7 @@ function renderDryRunSummary(results: RuleDryRunResult[]): HTMLElement {
               className: 'row',
               children: preview.flatMap((result, idx) => [
                 ...(idx > 0 ? [' · '] : []),
-                el('a', {
-                  className: 'host-link',
-                  href: `#/audit?target=${encodeURIComponent(result.thingId)}`,
-                  text: result.thingId,
-                }) as HTMLElement | string,
+                el('span', { text: result.thingId }) as HTMLElement | string,
               ]),
             }),
           ]

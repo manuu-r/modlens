@@ -31,6 +31,8 @@
     "onAppUpgrade": "/internal/triggers/upgrade",
     "onPostSubmit": "/internal/triggers/post-submit",
     "onCommentSubmit": "/internal/triggers/comment-submit",
+    "onPostUpdate": "/internal/triggers/post-update",
+    "onCommentUpdate": "/internal/triggers/comment-update",
     "onPostReport": "/internal/triggers/post-report",
     "onCommentReport": "/internal/triggers/comment-report",
     "onModAction": "/internal/triggers/mod-action",
@@ -68,6 +70,13 @@
         "endpoint": "/internal/menu/add-note"
       },
       {
+        "label": "ModLens: Add item note",
+        "description": "Save hidden mod-only context on this post or comment.",
+        "forUserType": "moderator",
+        "location": ["post", "comment"],
+        "endpoint": "/internal/menu/add-item-note"
+      },
+      {
         "label": "ModLens: Create risk rule",
         "description": "Create an explainable rule that raises queue priority from account, user, site, or report signals.",
         "forUserType": "moderator",
@@ -85,6 +94,7 @@
   },
   "forms": {
     "modlens_note": "/internal/form/add-note",
+    "modlens_item_note": "/internal/form/add-item-note",
     "modlens_domain": "/internal/form/tag-domain",
     "modlens_rule": "/internal/form/rule-builder",
     "modlens_alerts": "/internal/form/alert-config"
@@ -105,9 +115,6 @@
       },
       "backfill-modlog": {
         "endpoint": "/internal/scheduler/backfill-modlog"
-      },
-      "export-chunk": {
-        "endpoint": "/internal/scheduler/export-chunk"
       }
     }
   },

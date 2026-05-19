@@ -6,19 +6,32 @@ export const auditApi = new Hono();
 
 auditApi.get('/', async (c) => {
   await requireModerator();
-  const cursor = c.req.query('cursor');
-  const actor = c.req.query('actor');
-  const action = c.req.query('action');
-  const target = c.req.query('target');
-  const site = c.req.query('site');
-  return c.json(
-    await list({
-      ...(cursor ? { cursor } : {}),
-      ...(actor ? { actor } : {}),
-      ...(action ? { action } : {}),
-      ...(target ? { target } : {}),
-      ...(site ? { site } : {}),
-      limit: Number(c.req.query('limit') ?? 50),
-    })
-  );
+  const limit = Number(c.req.query('limit') ?? 50);
+  return c.json({ entries: await list(limit) });
+});
+
+auditApi.get('/export', async (c) => {
+  await requireModerator();
+  const limit = Number(c.req.query('limit') ?? 500);
+  const entries = await list(limit);
+  if (c.req.query('format') === 'csv') {
+    const rows = [
+      ['id', 'ts', 'actor', 'action', 'target'],
+      ...entries.map((entry) => [
+        entry.id,
+        String(entry.ts),
+        entry.actor,
+        entry.action,
+        entry.target,
+      ]),
+    ];
+    const csv = rows
+      .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(','))
+      .join('\n');
+    c.header('content-type', 'text/csv; charset=utf-8');
+    c.header('content-disposition', 'attachment; filename="modlens-audit.csv"');
+    return c.text(csv);
+  }
+  c.header('content-disposition', 'attachment; filename="modlens-audit.json"');
+  return c.json({ entries });
 });

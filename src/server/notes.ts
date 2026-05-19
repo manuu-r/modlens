@@ -160,7 +160,7 @@ export async function buildUserPanel(name: string): Promise<{
   } catch (error) {
     const message = error instanceof Error ? `${error.message} ${(error as { details?: string }).details ?? ''}` : String(error);
     if (!/404/.test(message) && !/not\s*found/i.test(message)) {
-      console.warn('userPanel: getUserByUsername failed', error);
+      console.warn('userPanel: getUserByUsername failed', message);
     }
   }
 

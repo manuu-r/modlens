@@ -1,8 +1,10 @@
-import { getBootstrap, type BootstrapResponse } from '../api';
+import { getAudit, getBootstrap, type BootstrapResponse } from '../api';
 import {
   cell,
   chip,
   el,
+  errorPanel,
+  formatRelative,
   loadingPanel,
   metric,
   panel,
@@ -59,5 +61,35 @@ function renderSettingsContent(bootstrap: BootstrapResponse): HTMLElement {
       el('h2', { text: 'Enabled features' }),
       bootstrap.features.length ? row(...bootstrap.features.map((feature) => chip(feature))) : el('p', { className: 'muted', text: 'No features enabled.' }),
     ),
+    renderAuditPanel(),
   );
+}
+
+function renderAuditPanel(): HTMLElement {
+  const container = el('div', { children: [loadingPanel('Loading audit trail...')] });
+  void getAudit(25)
+    .then(({ entries }) => {
+      container.replaceChildren(
+        panel(
+          el('h2', { text: 'Recent audit trail' }),
+          row(
+            el('a', { className: 'button', href: '/api/audit/export?format=json', text: 'Export JSON' }),
+            el('a', { className: 'button', href: '/api/audit/export?format=csv', text: 'Export CSV' }),
+          ),
+          entries.length
+            ? table(
+                ['When', 'Actor', 'Action', 'Target'],
+                entries.map((entry) => [
+                  cell(formatRelative(entry.ts)),
+                  cell(entry.actor),
+                  cell(entry.action),
+                  cell(entry.target),
+                ]),
+              )
+            : el('p', { className: 'muted', text: 'No audit entries recorded yet.' }),
+        ),
+      );
+    })
+    .catch((error: unknown) => container.replaceChildren(errorPanel(error)));
+  return container;
 }

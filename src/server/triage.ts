@@ -2,6 +2,7 @@ import { reddit, redis } from '@devvit/web/server';
 import type { T1, T3 } from '@devvit/shared-types/tid.js';
 import type { ThingKind, TriageBucket, TriageDecision, TriageItem } from '../shared/types';
 import { write as writeAudit } from './audit';
+import { recordDecision } from './decisionLog';
 import { decode, encode } from './json';
 import { redisKeys } from './redisKeys';
 import { buildFacts, scoreFacts } from './rules';
@@ -87,6 +88,51 @@ async function recordRuleMatches(thingId: string, matchedRuleIds: string[], ts: 
   }
 }
 
+function reasonRefsChanged(a: TriageItem['reasonRefs'], b: TriageItem['reasonRefs']): boolean {
+  return JSON.stringify(a ?? []) !== JSON.stringify(b ?? []);
+}
+
+async function refreshItemScore(item: TriageItem): Promise<{ item: TriageItem; changed: boolean }> {
+  const facts = await buildFacts(item);
+  const scored = await scoreFacts(facts);
+  const { reasonRefs: _oldReasonRefs, ...base } = item;
+  void _oldReasonRefs;
+  const next: TriageItem = {
+    ...base,
+    score: scored.score,
+    bucket: scored.bucket,
+    reasons: scored.reasons,
+    ...(scored.reasonRefs.length > 0 ? { reasonRefs: scored.reasonRefs } : {}),
+  };
+  const changed =
+    item.score !== next.score ||
+    item.bucket !== next.bucket ||
+    JSON.stringify(item.reasons) !== JSON.stringify(next.reasons) ||
+    reasonRefsChanged(item.reasonRefs, next.reasonRefs);
+
+  if (changed) {
+    if (item.bucket !== next.bucket) {
+      await redis.zRem(redisKeys.triageBucket(item.bucket), [item.thingId]);
+    }
+    await storeItem(next);
+    await recordRuleMatches(item.thingId, scored.matchedRuleIds, item.createdAt);
+    await recordDecision({
+      thingId: next.thingId,
+      author: next.author,
+      source: 'rules',
+      scoreBefore: item.score,
+      scoreAfter: next.score,
+      bucketBefore: item.bucket,
+      bucketAfter: next.bucket,
+      matchedRuleIds: scored.matchedRuleIds,
+      reasons: next.reasons,
+      facts,
+    });
+  }
+
+  return { item: next, changed };
+}
+
 export async function listBucket(
   bucket: TriageBucket,
   cursor?: string,
@@ -120,7 +166,11 @@ export async function listBucket(
       }
       const item = await getItem(row.member);
       if (item) {
-        items.push(item);
+        const refreshed = await refreshItemScore(item);
+        if (refreshed.item.bucket !== bucket) {
+          continue;
+        }
+        items.push(refreshed.item);
         itemRows.push(row);
         if (items.length >= pageSize + 1) {
           break;
@@ -146,7 +196,13 @@ export async function listBucket(
 function mergeReports(existing: string[] | undefined, incoming: string[] | undefined): string[] | undefined {
   if (!existing?.length) return incoming?.length ? incoming : undefined;
   if (!incoming?.length) return existing;
-  return incoming.length > existing.length ? incoming : existing;
+  const merged = [...existing];
+  for (const report of incoming) {
+    if (!merged.includes(report)) {
+      merged.push(report);
+    }
+  }
+  return merged;
 }
 
 export async function upsertScoredItem(input: EnqueueInput): Promise<TriageItem> {
@@ -181,6 +237,18 @@ export async function upsertScoredItem(input: EnqueueInput): Promise<TriageItem>
   }
   await storeItem(item);
   await recordRuleMatches(item.thingId, scored.matchedRuleIds, item.createdAt);
+  await recordDecision({
+    thingId: item.thingId,
+    author: item.author,
+    source: 'rules',
+    scoreBefore: existing?.score ?? 0,
+    scoreAfter: item.score,
+    bucketBefore: existing?.bucket ?? 'normal',
+    bucketAfter: item.bucket,
+    matchedRuleIds: scored.matchedRuleIds,
+    reasons: item.reasons,
+    facts,
+  });
   return item;
 }
 
@@ -227,18 +295,8 @@ export async function rescoreTopN(n = 200): Promise<number> {
     if (!item) {
       continue;
     }
-    const facts = await buildFacts(item);
-    const scored = await scoreFacts(facts);
-    if (item.score !== scored.score || item.bucket !== scored.bucket) {
-      await redis.zRem(redisKeys.triageBucket(item.bucket), [item.thingId]);
-      await storeItem({
-        ...item,
-        score: scored.score,
-        bucket: scored.bucket,
-        reasons: scored.reasons,
-        ...(scored.reasonRefs.length > 0 ? { reasonRefs: scored.reasonRefs } : {}),
-      });
-      await recordRuleMatches(item.thingId, scored.matchedRuleIds, item.createdAt);
+    const refreshed = await refreshItemScore(item);
+    if (refreshed.changed) {
       changed += 1;
     }
   }

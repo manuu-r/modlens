@@ -119,7 +119,7 @@ function renderRemovedDomainsPanel(domains: DomainEntry[]): HTMLElement {
     el('h2', { text: 'Top removed sites' }),
     domains.length
       ? table(
-          ['Host', 'Tag', 'Removed', 'Posts'],
+          ['Host', 'Tag', 'Removed in range', 'Posts seen'],
           domains.map((domain) => [
             el('a', {
               className: 'host-link',

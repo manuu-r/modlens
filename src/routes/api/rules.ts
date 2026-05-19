@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { deleteRule, dryRunRule, getRule, listRules, recentRuleMatches, saveRule } from '../../server/rules';
+import { listDecisions } from '../../server/decisionLog';
 import { requireModerator } from '../../server/modAuth';
 import type { RuleConfig } from '../../shared/types';
 
@@ -8,6 +9,12 @@ export const rulesApi = new Hono();
 rulesApi.get('/', async (c) => {
   await requireModerator();
   return c.json(await listRules());
+});
+
+rulesApi.get('/decisions', async (c) => {
+  await requireModerator();
+  const limit = Number(c.req.query('limit') ?? 50);
+  return c.json({ decisions: await listDecisions(limit) });
 });
 
 rulesApi.post('/', async (c) => {

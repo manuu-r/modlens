@@ -1,11 +1,8 @@
 import type { DomainTag } from './tags';
 import type {
   AlertConfig,
-  AuditEntry,
   DigestWindow,
   DomainEntry,
-  ExportFormat,
-  ExportKind,
   InsightRange,
   JsonObject,
   MicroInsight,
@@ -156,34 +153,6 @@ export interface SaveAlertsConfigRequest {
 export type SaveAlertsConfigResponse = ApiResponse<{ config: AlertConfig }>;
 export type TestAlertResponse = ApiResponse<{ delivered: boolean; targets: string[] }>;
 
-export interface GetAuditRequest extends CursorRequest {
-  actor?: string;
-  action?: string;
-}
-
-export type GetAuditResponse = ApiResponse<CursorResponse & { entries: AuditEntry[] }>;
-
-export interface StartExportRequest {
-  kind: ExportKind;
-  format: ExportFormat;
-  range?: InsightRange;
-}
-
-export type StartExportResponse = ApiResponse<{ token: string; cursor: string }>;
-
-export interface GetExportChunkRequest {
-  token: string;
-  cursor?: string;
-}
-
-export type GetExportChunkResponse = ApiResponse<{
-  token: string;
-  body: string;
-  format: ExportFormat;
-  nextCursor?: string;
-  done: boolean;
-}>;
-
 export interface ApiContract {
   'GET /api/bootstrap': {
     response: GetBootstrapResponse;
@@ -259,17 +228,5 @@ export interface ApiContract {
   };
   'GET /api/alerts/test': {
     response: TestAlertResponse;
-  };
-  'GET /api/audit': {
-    request: GetAuditRequest;
-    response: GetAuditResponse;
-  };
-  'POST /api/export': {
-    request: StartExportRequest;
-    response: StartExportResponse;
-  };
-  'GET /api/export/:token': {
-    request: GetExportChunkRequest;
-    response: GetExportChunkResponse;
   };
 }

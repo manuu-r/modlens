@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { redis, scheduler } from '@devvit/web/server';
 import { fireAlert, getConfig } from '../server/alerts';
-import { runExport, type ExportRequest } from '../server/exporter';
 import { backfillChunk } from '../server/modlog';
 import { redisKeys } from '../server/redisKeys';
 import { rescoreTopN } from '../server/triage';
@@ -67,14 +66,5 @@ cron.post('/backfill-modlog', async (c) => {
       data: { cursor, processed },
     });
   }
-  return c.json<TaskResponse>({});
-});
-
-cron.post('/export-chunk', async (c) => {
-  const input = await c.req.json<TaskRequest<{ token: string; request: ExportRequest }>>();
-  if (!input.data?.token || !input.data?.request) {
-    return c.json<TaskResponse>({});
-  }
-  await runExport(input.data.request, input.data.token);
   return c.json<TaskResponse>({});
 });

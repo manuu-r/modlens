@@ -1,8 +1,13 @@
-import { settings } from '@devvit/web/server';
-import type { FactBag, MicroInsight, MicroInsightSeverity, TriageItem } from '../shared/types';
-import { memo } from './json';
+import { redis, settings } from '@devvit/web/server';
+import type {
+  FactBag,
+  MicroInsight,
+  MicroInsightSeverity,
+  TriageItem,
+} from '../shared/types';
 import { redisKeys } from './redisKeys';
-import { buildFacts } from './rules';
+import { buildFacts, scoreFacts } from './rules';
+import { recordDecision } from './decisionLog';
 import { getItem } from './triage';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
@@ -12,10 +17,14 @@ const MAX_LINE_CHARS = 70;
 type GeminiPart = { text?: string };
 type GeminiResponse = {
   candidates?: Array<{
+    finishReason?: string;
+    safetyRatings?: unknown;
     content?: {
       parts?: GeminiPart[];
     };
   }>;
+  promptFeedback?: unknown;
+  usageMetadata?: unknown;
 };
 
 type RawInsight = {
@@ -24,26 +33,111 @@ type RawInsight = {
   severity?: unknown;
 };
 
-export async function getTriageMicroInsight(thingId: string): Promise<MicroInsight | null> {
+const GEMINI_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    label: {
+      type: 'STRING',
+      description: `Short decision label, at most ${MAX_LABEL_CHARS} characters.`,
+    },
+    line: {
+      type: 'STRING',
+      description: `One-line moderation recommendation, at most ${MAX_LINE_CHARS} characters.`,
+    },
+    severity: {
+      type: 'STRING',
+      enum: ['high', 'medium', 'low', 'neutral'],
+    },
+  },
+  required: ['label', 'line', 'severity'],
+} as const;
+
+export async function getTriageMicroInsight(
+  thingId: string
+): Promise<MicroInsight | null> {
   const item = await getItem(thingId);
   if (!item) {
     return null;
   }
 
   const facts = await buildFacts(item);
-  const fallback = templateTriageInsight(item, facts);
-  const enabled = (await settings.get<boolean>('aiMicroInsightsEnabled')) ?? true;
+  const scored = await scoreFacts(facts);
+  const displayItem: TriageItem = {
+    ...item,
+    score: scored.score,
+    bucket: scored.bucket,
+    reasons: scored.reasons,
+    ...(scored.reasonRefs.length > 0 ? { reasonRefs: scored.reasonRefs } : {}),
+  };
+  const fallback = templateTriageInsight(displayItem, facts);
+  const enabled =
+    (await settings.get<boolean>('aiMicroInsightsEnabled')) ?? true;
   const apiKey = (await settings.get<string>('geminiApiKey'))?.trim();
   if (!enabled || !apiKey || fallback.severity === 'neutral') {
     return fallback;
   }
 
-  const model = ((await settings.get<string>('geminiModel')) || DEFAULT_GEMINI_MODEL).trim().replace(/^models\//, '');
-  const cacheKey = redisKeys.microInsight('triage', item.thingId, fingerprint(item, facts));
-  return memo(cacheKey, 60 * 60 * 6, async () => {
-    const generated = await generateGeminiInsight(item, facts, apiKey, model).catch(() => null);
-    return generated ?? fallback;
+  const model = (
+    (await settings.get<string>('geminiModel')) || DEFAULT_GEMINI_MODEL
+  )
+    .trim()
+    .replace(/^models\//, '');
+  const cacheKey = redisKeys.microInsight(
+    'triage',
+    item.thingId,
+    fingerprint(displayItem, facts)
+  );
+  const cached = await readCachedInsight(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const generated = await generateGeminiInsight(
+    displayItem,
+    facts,
+    apiKey,
+    model
+  ).catch((error: unknown) => {
+    console.error('[ModLens] Gemini micro insight request failed', {
+      thingId: item.thingId,
+      model,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   });
+  if (generated) {
+    await redis.set(cacheKey, JSON.stringify(generated), {
+      expiration: new Date(Date.now() + 60 * 60 * 6 * 1000),
+    });
+    await recordDecision({
+      thingId: displayItem.thingId,
+      author: displayItem.author,
+      source: generated.source === 'gemini' ? 'ai' : 'template',
+      scoreBefore: item.score,
+      scoreAfter: displayItem.score,
+      bucketBefore: item.bucket,
+      bucketAfter: displayItem.bucket,
+      matchedRuleIds: scored.matchedRuleIds,
+      reasons: displayItem.reasons,
+      facts,
+      insight: generated,
+    });
+  }
+  return generated ?? fallback;
+}
+
+async function readCachedInsight(
+  cacheKey: string
+): Promise<MicroInsight | null> {
+  const raw = await redis.get(cacheKey);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as MicroInsight;
+  } catch {
+    return null;
+  }
 }
 
 function templateTriageInsight(item: TriageItem, facts: FactBag): MicroInsight {
@@ -54,39 +148,94 @@ function templateTriageInsight(item: TriageItem, facts: FactBag): MicroInsight {
   const reportCount = facts['item.reports'];
   const ageDays = facts['account.ageDays'];
 
+  if (removals >= 3 && reportCount >= 2) {
+    return micro(
+      'Likely remove',
+      'Reports plus prior removals; confirm rule match.',
+      'high',
+      'template'
+    );
+  }
+
   if (removals >= 3 && siteTag) {
-    return micro('High risk', `${removals} removals and ${siteTag} site.`, 'high', 'template');
+    return micro(
+      'Likely remove',
+      `${siteTag} site plus ${removals} prior removals.`,
+      'high',
+      'template'
+    );
+  }
+
+  if (removals >= 3) {
+    return micro(
+      'Review history',
+      `${removals} prior removals; check this post against rules.`,
+      'high',
+      'template'
+    );
   }
 
   if (siteTag === 'spammy' || siteTag === 'scam') {
-    return micro('Site risk', `${siteTag} site with ${siteRemovals} removals.`, 'high', 'template');
+    return micro(
+      'Site risk',
+      `${siteTag} site with ${siteRemovals} removals.`,
+      'high',
+      'template'
+    );
   }
 
   if (spam > 0) {
-    return micro('Watch user', `${spam} spam notes and ${removals} removals.`, 'medium', 'template');
+    return micro(
+      'Watch user',
+      `${spam} spam notes and ${removals} removals.`,
+      'medium',
+      'template'
+    );
   }
 
   if (reportCount >= 2) {
-    return micro('Reports', `${reportCount} reports on this item.`, 'medium', 'template');
+    return micro(
+      'Review reports',
+      `${reportCount} reports; inspect the post before deciding.`,
+      'medium',
+      'template'
+    );
   }
 
   if (ageDays <= 7 && item.score > 0) {
-    return micro('New account', `${ageDays}d old with queue risk.`, 'medium', 'template');
+    return micro(
+      'Review account',
+      `${ageDays}d old account; inspect the post.`,
+      'medium',
+      'template'
+    );
   }
 
   if (item.reasons.length > 0) {
-    return micro('Check', item.reasons.slice(0, 2).join(', '), item.bucket === 'high' ? 'high' : 'medium', 'template');
+    return micro(
+      'Review post',
+      item.reasons.slice(0, 2).join(', '),
+      item.bucket === 'high' ? 'high' : 'medium',
+      'template'
+    );
   }
 
-  return micro('Low concern', 'No notes or removals found.', 'neutral', 'template');
+  return micro(
+    'Likely approve',
+    'No reports, notes, or removals found.',
+    'neutral',
+    'template'
+  );
 }
 
 async function generateGeminiInsight(
   item: TriageItem,
   facts: FactBag,
   apiKey: string,
-  model: string,
+  model: string
 ): Promise<MicroInsight | null> {
+  const startedAt = Date.now();
+  const prompt = buildPrompt(item, facts);
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
@@ -99,37 +248,94 @@ async function generateGeminiInsight(
         contents: [
           {
             role: 'user',
-            parts: [{ text: buildPrompt(item, facts) }],
+            parts: [{ text: prompt }],
           },
         ],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 48,
+          maxOutputTokens: 128,
           responseMimeType: 'application/json',
+          responseSchema: GEMINI_RESPONSE_SCHEMA,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
         },
       }),
-    },
+    }
   );
 
   if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    console.error('[ModLens] Gemini API error', {
+      thingId: item.thingId,
+      model,
+      status: response.status,
+      statusText: response.statusText,
+      body: body.slice(0, 500),
+      durationMs: Date.now() - startedAt,
+    });
     return null;
   }
 
-  const payload = (await response.json()) as GeminiResponse;
-  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('').trim();
+  const rawBody = await response.text();
+  let payload: GeminiResponse;
+  try {
+    payload = JSON.parse(rawBody) as GeminiResponse;
+  } catch {
+    console.error('[ModLens] Gemini API returned non-JSON success response', {
+      thingId: item.thingId,
+      model,
+      body: rawBody.slice(0, 500),
+      durationMs: Date.now() - startedAt,
+    });
+    return null;
+  }
+  const text = payload.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text ?? '')
+    .join('')
+    .trim();
   if (!text) {
+    console.error('[ModLens] Gemini API returned empty response', {
+      thingId: item.thingId,
+      model,
+      ...geminiDebug(payload),
+      body: rawBody.slice(0, 1000),
+      durationMs: Date.now() - startedAt,
+    });
     return null;
   }
 
-  return parseGeneratedInsight(text);
+  const parsed = parseGeneratedInsight(text);
+  if (!parsed) {
+    console.error('[ModLens] Gemini API returned invalid insight JSON', {
+      thingId: item.thingId,
+      model,
+      rawText: text.slice(0, 500),
+      ...geminiDebug(payload),
+      durationMs: Date.now() - startedAt,
+    });
+  }
+  return parsed;
+}
+
+function geminiDebug(payload: GeminiResponse): Record<string, unknown> {
+  const first = payload.candidates?.[0];
+  return {
+    candidateCount: payload.candidates?.length ?? 0,
+    finishReason: first?.finishReason ?? null,
+    promptFeedback: payload.promptFeedback ?? null,
+    safetyRatings: first?.safetyRatings ?? null,
+    usageMetadata: payload.usageMetadata ?? null,
+  };
 }
 
 function buildPrompt(item: TriageItem, facts: FactBag): string {
   return [
-    'Return JSON only: {"label":"...","line":"...","severity":"high|medium|low|neutral"}.',
-    `Label must be ${MAX_LABEL_CHARS} chars max. Line must be ${MAX_LINE_CHARS} chars max.`,
-    'Use no usernames, no quotes, no markdown, no paragraphs.',
-    'Only summarize these moderation facts:',
+    'You are writing a one-line moderation recommendation.',
+    'Return exactly one JSON object matching the provided schema.',
+    'Do not include prose, markdown, code fences, prefaces, usernames, or quoted content.',
+    `Keep label <= ${MAX_LABEL_CHARS} chars and line <= ${MAX_LINE_CHARS} chars.`,
+    'Base the recommendation only on these facts:',
     JSON.stringify({
       bucket: item.bucket,
       score: item.score,
@@ -146,7 +352,11 @@ function buildPrompt(item: TriageItem, facts: FactBag): string {
 
 function parseGeneratedInsight(text: string): MicroInsight | null {
   try {
-    const parsed = JSON.parse(text) as RawInsight;
+    const json = extractJsonObject(text);
+    if (!json) {
+      return null;
+    }
+    const parsed = JSON.parse(json) as RawInsight;
     const label = typeof parsed.label === 'string' ? parsed.label : '';
     const line = typeof parsed.line === 'string' ? parsed.line : '';
     const severity = parseSeverity(parsed.severity);
@@ -159,8 +369,30 @@ function parseGeneratedInsight(text: string): MicroInsight | null {
   }
 }
 
+function extractJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    return trimmed;
+  }
+
+  const fenced = trimmed.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
+  if (fenced?.[1]) {
+    return fenced[1];
+  }
+
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+  return null;
+}
+
 function parseSeverity(value: unknown): MicroInsightSeverity {
-  return value === 'high' || value === 'medium' || value === 'low' || value === 'neutral'
+  return value === 'high' ||
+    value === 'medium' ||
+    value === 'low' ||
+    value === 'neutral'
     ? value
     : 'neutral';
 }
@@ -169,7 +401,7 @@ function micro(
   label: string,
   line: string,
   severity: MicroInsightSeverity,
-  source: MicroInsight['source'],
+  source: MicroInsight['source']
 ): MicroInsight {
   return {
     label: truncate(cleanOneLine(label), MAX_LABEL_CHARS),
@@ -184,11 +416,14 @@ function cleanOneLine(value: string): string {
 }
 
 function truncate(value: string, max: number): string {
-  return value.length <= max ? value : value.slice(0, Math.max(0, max - 3)).trimEnd() + '...';
+  return value.length <= max
+    ? value
+    : value.slice(0, Math.max(0, max - 3)).trimEnd() + '...';
 }
 
 function fingerprint(item: TriageItem, facts: FactBag): string {
   const raw = JSON.stringify({
+    version: 4,
     score: item.score,
     bucket: item.bucket,
     reasons: item.reasons,

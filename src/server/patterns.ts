@@ -14,7 +14,7 @@ export function authorSiteRepeats(author: string, host: string, items: TriageIte
     label: `${author} posted ${host} ${matches.length}× in 30d`,
     evidence: matches.slice(0, 3).map((i) => ({
       label: i.title ?? i.thingId,
-      href: `#/audit?target=${encodeURIComponent(i.thingId)}`,
+      href: i.url ?? `#/users/${encodeURIComponent(i.author)}`,
     })),
   };
 }
@@ -56,10 +56,10 @@ export function siteSpike(host: string, items: TriageItem[]): PatternMatch | nul
 
 // High cumulative removal count — proxy for repeat problem accounts
 export function repeatRemovals(author: string, removalCount: number): PatternMatch | null {
-  if (removalCount < 5) return null;
+  if (removalCount < 3) return null;
   return {
     id: 'repeat_removals',
     label: `u/${author} has ${removalCount} prior removals`,
-    evidence: [{ label: 'View mod log', href: `#/audit?target=${encodeURIComponent(author)}` }],
+    evidence: [{ label: 'View user', href: `#/users/${encodeURIComponent(author)}` }],
   };
 }

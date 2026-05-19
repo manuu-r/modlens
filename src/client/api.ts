@@ -3,9 +3,9 @@ import type {
   AlertRecord,
   AuditEntry,
   ContextSummary,
+  DecisionLogEntry,
   DomainEntry,
-  ExportFormat,
-  ExportKind,
+  ItemNote,
   InsightRange,
   MicroInsight,
   ModlogInsights,
@@ -93,26 +93,6 @@ export type RulesResponse = RuleConfig[];
 export type DryRunResponse = { results: RuleDryRunResult[] };
 
 export type AlertsConfigResponse = { config: AlertConfig };
-
-export type AuditResponse = {
-  entries: AuditEntry[];
-  nextCursor?: string;
-};
-
-export type ExportStartResponse = {
-  token: string;
-  cursor: string;
-  format: ExportFormat;
-};
-
-export type ExportChunkResponse = {
-  token: string;
-  body: string;
-  format: ExportFormat;
-  done: boolean;
-  pending?: boolean;
-  nextCursor?: string;
-};
 
 export type MicroInsightResponse = { insight: MicroInsight };
 
@@ -265,6 +245,32 @@ export function getTriageContext(thingId: string): Promise<{ summary: ContextSum
   return request<{ summary: ContextSummary }>(`/api/ai/triage/${encodeURIComponent(thingId)}/context`);
 }
 
+export function listItemNotes(thingId: string): Promise<{ notes: ItemNote[] }> {
+  return request<{ notes: ItemNote[] }>(`/api/item/${encodeURIComponent(thingId)}/notes`);
+}
+
+export function addItemNote(
+  thingId: string,
+  body: { kind: TriageItem['kind']; text: string; refUrl?: string },
+): Promise<{ note: ItemNote }> {
+  return post<{ note: ItemNote }>(`/api/item/${encodeURIComponent(thingId)}/notes`, body);
+}
+
+export function deleteItemNote(thingId: string, id: string): Promise<{ deleted: boolean; ok: boolean }> {
+  return request<{ deleted: boolean; ok: boolean }>(
+    `/api/item/${encodeURIComponent(thingId)}/notes/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export function getRuleDecisions(limit = 25): Promise<{ decisions: DecisionLogEntry[] }> {
+  return request<{ decisions: DecisionLogEntry[] }>(withQuery('/api/rules/decisions', { limit }));
+}
+
+export function getAudit(limit = 25): Promise<{ entries: AuditEntry[] }> {
+  return request<{ entries: AuditEntry[] }>(withQuery('/api/audit', { limit }));
+}
+
 export function getAlertsConfig(): Promise<AlertsConfigResponse> {
   return request<AlertsConfigResponse>('/api/alerts/config');
 }
@@ -275,13 +281,6 @@ export function saveAlertsConfig(config: AlertConfig): Promise<AlertsConfigRespo
 
 export function testAlert(): Promise<{ delivered: boolean; targets: string[] }> {
   return request<{ delivered: boolean; targets: string[] }>('/api/alerts/test');
-}
-
-export function getAudit(
-  cursor?: string,
-  filters?: { actor?: string; action?: string; target?: string; site?: string },
-): Promise<AuditResponse> {
-  return request<AuditResponse>(withQuery('/api/audit', { cursor, ...filters }));
 }
 
 export type SiteAuthor = { name: string; itemCount: number; lastSeenAt: number };
@@ -300,17 +299,6 @@ export function getSiteUsers(host: string, limit = 25): Promise<{ authors: SiteA
 
 export function getRecentAlerts(limit = 25): Promise<{ alerts: AlertRecord[] }> {
   return request<{ alerts: AlertRecord[] }>(withQuery('/api/alerts/recent', { limit }));
-}
-
-export function startExport(body: {
-  kind: ExportKind;
-  format: ExportFormat;
-}): Promise<ExportStartResponse> {
-  return post<ExportStartResponse>('/api/export', body);
-}
-
-export function getExportChunk(token: string, cursor?: string): Promise<ExportChunkResponse> {
-  return request<ExportChunkResponse>(withQuery(`/api/export/${encodeURIComponent(token)}`, { cursor }));
 }
 
 // Removal reason templates

@@ -9,7 +9,8 @@ import { requireModerator } from '../server/modAuth';
 import { createNote } from '../server/notes';
 import { saveRule } from '../server/rules';
 import { saveConfig } from '../server/alerts';
-import type { AlertConfig, Condition, ConditionOp, RuleConfig, TriageBucket } from '../shared/types';
+import { createItemNote } from '../server/itemNotes';
+import type { AlertConfig, Condition, ConditionOp, RuleConfig, ThingKind, TriageBucket } from '../shared/types';
 import { CONDITION_OPS } from '../shared/types';
 
 export const forms = new Hono();
@@ -73,6 +74,31 @@ forms.post('/tag-domain', async (c) => {
   });
 });
 
+forms.post('/add-item-note', async (c) => {
+  const moderator = await requireModerator();
+  const values = await c.req.json<Record<string, unknown>>();
+  const thingId = firstString(values.thingId) ?? '';
+  const kindValue = firstString(values.kind);
+  const kind: ThingKind = kindValue === 'comment' ? 'comment' : 'post';
+  const text = firstString(values.text)?.trim() ?? '';
+  const refUrl = firstString(values.refUrl);
+  if (!thingId || !text) {
+    return c.json<UiResponse>({ showToast: 'ModLens item note failed: missing item or note text.' });
+  }
+  await createItemNote(
+    {
+      thingId,
+      kind,
+      text,
+      ...(refUrl ? { refUrl } : {}),
+    },
+    moderator.user,
+  );
+  return c.json<UiResponse>({
+    showToast: { text: 'Item note saved for the mod team.', appearance: 'success' },
+  });
+});
+
 forms.post('/rule-builder', async (c) => {
   const moderator = await requireModerator();
   const values = await c.req.json<Record<string, unknown>>();
@@ -126,7 +152,7 @@ forms.post('/alert-config', async (c) => {
 
   const enabled = Array.isArray(values.enabledTypes)
     ? values.enabledTypes.filter((t): t is string => typeof t === 'string')
-    : ['queue_backlog_high', 'repeat_offender', 'bad_domain'];
+    : ['queue_backlog_high', 'repeat_offender', 'bad_domain', 'edited_link_added', 'modmail_new'];
   const threshold = firstNumber(values.highBacklogThreshold) ?? 25;
 
   const config: AlertConfig = {

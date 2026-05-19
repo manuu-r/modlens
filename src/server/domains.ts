@@ -3,7 +3,7 @@ import type { DomainTag } from '../shared/tags';
 import type { DomainEntry, TriageItem } from '../shared/types';
 import { write as writeAudit } from './audit';
 import { decode, numberFrom } from './json';
-import { normalizeHost, redisKeys } from './redisKeys';
+import { isRedditHost, normalizeHost, redisKeys } from './redisKeys';
 
 export async function getDomain(host: string): Promise<DomainEntry> {
   const clean = normalizeHost(host) ?? host.toLowerCase().replace(/^www\./, '');
@@ -26,7 +26,7 @@ export async function getDomain(host: string): Promise<DomainEntry> {
 
 export async function recordDomainSeen(rawUrl: string, delta = 1): Promise<DomainEntry | null> {
   const host = normalizeHost(rawUrl);
-  if (!host) {
+  if (!host || isRedditHost(host)) {
     return null;
   }
 
@@ -42,7 +42,7 @@ export async function recordDomainSeen(rawUrl: string, delta = 1): Promise<Domai
 
 export async function recordDomainRemoved(rawUrl: string): Promise<DomainEntry | null> {
   const host = normalizeHost(rawUrl);
-  if (!host) {
+  if (!host || isRedditHost(host)) {
     return null;
   }
 

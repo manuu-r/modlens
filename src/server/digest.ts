@@ -83,7 +83,7 @@ export async function buildDigest(name: string, window: DigestWindow): Promise<U
     });
     const recentModActions = [] as UserDigest['recentModActions'];
     for (const row of recentActionIds) {
-      const raw = await redis.hGet(redisKeys.auditEntry(row.member), 'entry');
+      const raw = await redis.hGet(redisKeys.modlogEntry(row.member), 'entry');
       const entry = decode(raw, null) as UserDigest['recentModActions'][number] | null;
       if (entry) recentModActions.push(entry);
     }

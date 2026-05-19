@@ -1,4 +1,4 @@
-import { context, reddit, redis } from '@devvit/web/server';
+import { context, redis } from '@devvit/web/server';
 import type {
   Condition,
   FactBag,
@@ -11,7 +11,7 @@ import type {
 import type { DomainTag } from '../shared/tags';
 import { isDomainTag } from '../shared/tags';
 import { decode, encode, numberFrom } from './json';
-import { normalizeHost, redisKeys } from './redisKeys';
+import { isRedditHost, normalizeHost, redisKeys } from './redisKeys';
 
 const bucketRank: Record<TriageBucket, number> = {
   normal: 0,
@@ -47,6 +47,13 @@ export const defaultRules: RuleConfig[] = [
     priority: 40,
     when: { all: [{ fact: 'item.reports', op: '>=', value: 2 }] },
     then: { scoreDelta: 25, bucket: 'aged', reason: 'multiple reports' },
+  },
+  {
+    id: 'edited_link_added',
+    name: 'Edited link added',
+    priority: 50,
+    when: { all: [{ fact: 'item.editedLinkAdded', op: '==', value: true }] },
+    then: { scoreDelta: 35, bucket: 'aged', reason: 'external link added in edit' },
   },
 ];
 
@@ -114,11 +121,11 @@ export async function deleteRule(id: string): Promise<void> {
 }
 
 export async function seedDefaults(): Promise<void> {
-  if ((await redis.zCard(redisKeys.rulesOrder())) > 0) {
-    return;
-  }
   for (const rule of defaultRules) {
-    await saveRule(rule);
+    const existing = await getRule(rule.id);
+    if (!existing) {
+      await saveRule(rule);
+    }
   }
 }
 
@@ -167,24 +174,8 @@ export async function scoreFacts(facts: FactBag): Promise<{
 }
 
 async function userAgeDays(author: string): Promise<{ ageDays: number; karma: number; linkKarma: number; verified: boolean }> {
-  if (author === '[deleted]' || !author) {
-    return { ageDays: 0, karma: 0, linkKarma: 0, verified: false };
-  }
-  try {
-    const user = await reddit.getUserByUsername(author);
-    if (!user) {
-      return { ageDays: 0, karma: 0, linkKarma: 0, verified: false };
-    }
-    const ageDays = Math.max(0, Math.floor((Date.now() - user.createdAt.getTime()) / 86_400_000));
-    return {
-      ageDays,
-      karma: user.commentKarma,
-      linkKarma: user.linkKarma,
-      verified: user.hasVerifiedEmail,
-    };
-  } catch {
-    return { ageDays: 0, karma: 0, linkKarma: 0, verified: false };
-  }
+  void author;
+  return { ageDays: 999999, karma: 0, linkKarma: 0, verified: false };
 }
 
 async function userRemovalCounts(author: string): Promise<{ removalCount: number; spamCount: number }> {
@@ -204,7 +195,7 @@ async function domainFacts(url: string | undefined): Promise<{ tag?: DomainTag; 
     return { removedCount: 0 };
   }
   const host = normalizeHost(url);
-  if (!host) {
+  if (!host || isRedditHost(host)) {
     return { removedCount: 0 };
   }
   const [meta, stats] = await Promise.all([
@@ -234,6 +225,9 @@ export async function buildFacts(item: TriageItem): Promise<FactBag> {
     ...(domain.tag ? { 'post.domain.tag': domain.tag } : {}),
     'post.domain.removedCount': domain.removedCount,
     'item.reports': item.reports?.length ?? 0,
+    ...(item.reports?.some((report) => report.toLowerCase().includes('edited link added'))
+      ? { 'item.editedLinkAdded': true }
+      : {}),
   };
 }
 

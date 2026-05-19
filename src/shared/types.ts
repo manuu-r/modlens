@@ -23,12 +23,6 @@ export type InsightRange = (typeof INSIGHT_RANGES)[number];
 export const TRIAGE_DECISIONS = ['approve', 'remove', 'ignore'] as const;
 export type TriageDecision = (typeof TRIAGE_DECISIONS)[number];
 
-export const EXPORT_KINDS = ['notes', 'domains', 'audit', 'modlog'] as const;
-export type ExportKind = (typeof EXPORT_KINDS)[number];
-
-export const EXPORT_FORMATS = ['csv', 'json'] as const;
-export type ExportFormat = (typeof EXPORT_FORMATS)[number];
-
 export interface Note {
   id: string;
   label: UserNoteLabel;
@@ -37,6 +31,16 @@ export interface Note {
   createdAt: number;
   refUrl?: string;
   mirrorStatus?: 'synced' | 'pending';
+}
+
+export interface ItemNote {
+  id: string;
+  thingId: string;
+  kind: ThingKind;
+  text: string;
+  authorMod: string;
+  createdAt: number;
+  refUrl?: string;
 }
 
 export interface UserSummary {
@@ -110,6 +114,20 @@ export interface AuditEntry {
   ts: number;
 }
 
+export interface ModlogEntry {
+  id: string;
+  actor: string;
+  action: string;
+  target: string;
+  ts: number;
+  targetAuthor?: string;
+  targetId?: string;
+  targetPermalink?: string;
+  targetHost?: string;
+  description?: string;
+  details?: string;
+}
+
 export interface AlertConfig {
   discordWebhookUrl?: string;
   slackWebhookUrl?: string;
@@ -144,6 +162,7 @@ export interface FactBag {
   'post.domain.tag'?: DomainTag;
   'post.domain.removedCount': number;
   'item.reports': number;
+  'item.editedLinkAdded'?: boolean;
 }
 
 export interface RecentActivityItem {
@@ -164,7 +183,7 @@ export interface UserDigest {
   commentCount: number;
   removalRatio: number;
   topDomains: DomainEntry[];
-  recentModActions: AuditEntry[];
+  recentModActions: ModlogEntry[];
   averageScore: number;
   controversial: boolean;
 }
@@ -186,6 +205,22 @@ export interface MicroInsight {
   line: string;
   severity: MicroInsightSeverity;
   source: MicroInsightSource;
+}
+
+export interface DecisionLogEntry {
+  id: string;
+  thingId: string;
+  author: string;
+  ts: number;
+  source: 'rules' | 'ai' | 'template';
+  scoreBefore: number;
+  scoreAfter: number;
+  bucketBefore: TriageBucket;
+  bucketAfter: TriageBucket;
+  matchedRuleIds: string[];
+  reasons: string[];
+  facts: JsonObject;
+  insight?: MicroInsight;
 }
 
 export type SuggestionIntent = 'review' | 'tag' | 'remove' | 'approve' | 'note';

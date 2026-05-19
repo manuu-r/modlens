@@ -1,6 +1,5 @@
 import type { BootstrapResponse, InsightsRange, TriageBucket } from '../api';
 import { renderAlertsConfig } from './AlertsConfig';
-import { renderAuditLog } from './AuditLog';
 import { renderDomainPanel, renderDomainsIndex } from './DomainPanel';
 import { renderModLogInsights } from './ModLogInsights';
 import { renderRemovalReasonEditor } from './RemovalReasonEditor';
@@ -18,7 +17,6 @@ type NavItem = {
 const navItems: NavItem[] = [
   { label: 'Queue', href: '#/triage' },
   { label: 'Users', href: '#/users' },
-  { label: 'Mod log', href: '#/audit' },
   { label: 'Sites', href: '#/sites' },
   { label: 'Rules', href: '#/rules' },
   { label: 'Alerts', href: '#/alerts' },
@@ -156,10 +154,6 @@ export class Shell {
 
     if (route === 'removal') {
       return renderRemovalReasonEditor();
-    }
-
-    if (route === 'audit') {
-      return renderAuditLog();
     }
 
     if (route === 'alerts') {

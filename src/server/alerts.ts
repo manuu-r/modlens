@@ -9,7 +9,6 @@ function buildLinksFromItem(item: TriageItem, domainTag?: string): AlertLinks {
   const links: AlertLinks = {
     queue: `#/triage/${item.bucket}`,
     author: `#/users/${encodeURIComponent(item.author)}`,
-    item: `#/audit?target=${encodeURIComponent(item.thingId)}`,
   };
   if (item.url) {
     const host = normalizeHost(item.url);
@@ -30,6 +29,8 @@ const defaultConfig: AlertConfig = {
     'pattern.author_site_repeats',
     'pattern.new_account_cluster',
     'pattern.site_spike',
+    'edited_link_added',
+    'modmail_new',
   ],
 };
 
@@ -37,6 +38,8 @@ export type AlertType =
   | 'queue_backlog_high'
   | 'repeat_offender'
   | 'bad_domain'
+  | 'edited_link_added'
+  | 'modmail_new'
   | 'pattern.author_site_repeats'
   | 'pattern.new_account_cluster'
   | 'pattern.site_spike'
@@ -183,7 +186,8 @@ export async function fireAlert(
   payload: JsonObject,
   links: AlertLinks = {},
 ): Promise<string[]> {
-  if (!(await rateLimit(type))) {
+  const bypassRateLimit = type === 'modmail_new';
+  if (!bypassRateLimit && !(await rateLimit(type))) {
     return [];
   }
   const config = await getConfig();

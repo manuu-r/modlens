@@ -6,7 +6,7 @@ import {
   type UserPanelResponse,
 } from '../api';
 import { USER_NOTE_LABELS, type UserNoteLabel } from '../../shared/labels';
-import type { AuditEntry, DigestWindow, DomainEntry, Note, RecentActivityItem, UserDigest } from '../../shared/types';
+import type { DigestWindow, DomainEntry, ModlogEntry, Note, RecentActivityItem, UserDigest } from '../../shared/types';
 import {
   chip,
   createElement,
@@ -108,15 +108,6 @@ function renderUserContent(
           )
         : row(metric('?', 'No account data')),
       row(...summaryChips.filter((item): item is HTMLElement => item !== null)),
-      row(
-        el('a', {
-          className: 'button',
-          href: `#/audit?target=${encodeURIComponent(name)}`,
-          text: 'Open mod log',
-          title: 'Open mod log entries related to this user.',
-          attrs: { 'aria-label': 'Open mod log entries related to this user.' },
-        }),
-      ),
     ),
     renderNotesPanel(name, payload.notes, activeWindow, reload),
     renderModActionsPanel(digest.recentModActions),
@@ -126,7 +117,7 @@ function renderUserContent(
   );
 }
 
-function renderModActionsPanel(entries: AuditEntry[]): HTMLElement {
+function renderModActionsPanel(entries: ModlogEntry[]): HTMLElement {
   return panel(
     el('h2', { text: 'Recent mod actions' }),
     entries.length

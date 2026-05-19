@@ -164,6 +164,29 @@ menu.post('/add-note', async (c) => {
   });
 });
 
+menu.post('/add-item-note', async (c) => {
+  const request = await c.req.json<MenuItemRequest>();
+  await requireModerator();
+  const kind = isT1(request.targetId) ? 'comment' : 'post';
+  const refUrl = await getTargetUrl(request.targetId).catch(() => request.targetId);
+  return c.json<UiResponse>({
+    showForm: {
+      name: 'modlens_item_note',
+      form: {
+        title: 'ModLens: Add item note',
+        description: 'Save hidden context on this post or comment for other moderators.',
+        acceptLabel: 'Save note',
+        fields: [
+          { name: 'thingId', label: 'Item', type: 'string', defaultValue: request.targetId, disabled: true },
+          { name: 'kind', label: 'Kind', type: 'string', defaultValue: kind, disabled: true },
+          { name: 'refUrl', label: 'Reference', type: 'string', defaultValue: refUrl, disabled: true },
+          { name: 'text', label: 'Note', type: 'paragraph', required: true },
+        ],
+      },
+    },
+  });
+});
+
 menu.post('/new-rule', async (c) => {
   return c.json<UiResponse>({
     showForm: {
@@ -254,8 +277,10 @@ menu.post('/alert-config', async (c) => {
               { label: 'Queue backlog high', value: 'queue_backlog_high' },
               { label: 'Repeat offender entering queue', value: 'repeat_offender' },
               { label: 'Bad site entering queue', value: 'bad_domain' },
+              { label: 'Edited item added link', value: 'edited_link_added' },
+              { label: 'New modmail', value: 'modmail_new' },
             ],
-            defaultValue: ['queue_backlog_high', 'repeat_offender', 'bad_domain'],
+            defaultValue: ['queue_backlog_high', 'repeat_offender', 'bad_domain', 'edited_link_added', 'modmail_new'],
             multiSelect: true,
           },
         ],
