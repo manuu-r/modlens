@@ -1,39 +1,59 @@
 # ModLens
 
-Reddit-native context for queue decisions.
+Reddit-native moderation context for faster, more consistent queue decisions.
 
-ModLens helps moderators review queue items with author context, shared notes, linked-site evidence, searchable mod log history, explainable risk rules, low-noise alerts, and optional one-line AI insights.
+ModLens gives subreddit moderators a focused expanded workspace for queue items, user context, shared notes, linked-site history, explainable risk rules, low-noise alerts, removal reason workflows, and optional one-line AI insights.
 
-## What It Does
+## What ModLens Helps With
 
-- Opens a focused queue review surface for high, aged, and normal items.
-- Shows author notes, removals, recent activity, linked sites, and focused author context.
-- Parses post URLs into sites and lets mods tag sites as trusted, watchlist, spammy, or scam.
-- Provides searchable mod log context and lightweight team activity insights.
-- Supports explainable risk rules for repeat offenders, site risk, and queue patterns.
-- Sends low-noise alerts for backlog, repeat-offender, and bad-site signals.
+- Review posts and comments in high, aged, and normal triage buckets.
+- See author context, including shared mod notes, prior removals, recent subreddit activity, linked sites, and account-level signals.
+- Add private author notes and item notes for future moderators.
+- Detect external links added after a post or comment is edited.
+- Tag linked domains as trusted, watchlist, spammy, or scam.
+- Create explainable rules that raise queue priority based on reports, prior removals, domain tags, and edit behavior.
+- Use removal reason templates with variables for consistent moderator messaging.
+- Review mod log insights, audit history, and recent automated decision reasoning.
+- Send optional alerts for backlog, repeat-offender, risky-domain, edited-link, pattern, and modmail events.
+- Generate optional short AI moderation insights when configured by the app owner.
 
 ## Moderator Actions
 
-- ModLens: Open queue - Open the review queue with risk reasons and author/site context.
-- ModLens: View author context - Open ModLens focused on the author of the selected post or comment.
-- ModLens: Tag linked site - Review the linked site and apply a moderation tag.
-- ModLens: Add author note - Save a shared note that appears in future author context.
-- ModLens: Create risk rule - Create an explainable rule from the selected queue item.
-- ModLens: Configure alerts - Open alert settings for high-signal moderation events.
+ModLens adds moderator-only menu actions:
 
-## Privacy and AI
+- **ModLens: Open queue** opens the ModLens launcher; moderators can then open the full review workspace in expanded view.
+- **ModLens: View author context** opens notes, recent activity, linked sites, and related moderation history for the selected author.
+- **ModLens: Tag linked site** saves a trusted, watchlist, spammy, or scam tag for a linked domain.
+- **ModLens: Add author note** saves a shared note about the selected author.
+- **ModLens: Add item note** saves private context on the selected post or comment.
+- **ModLens: Create risk rule** creates an explainable queue-priority rule.
+- **ModLens: Configure alerts** opens alert settings for high-signal moderation events.
 
-ModLens stores moderation context in Redis for the installed subreddit. Gemini AI is optional and only receives compact moderation facts for short one-line insights; raw Reddit content is not sent by the micro-insight adapter.
+## Data Handling
 
-## Development
+ModLens stores moderation context in Devvit Redis for the subreddit where it is installed. Stored data may include queue items, usernames tied to moderation context, mod notes, item notes, domain tags, rule configuration, alert configuration, recent alerts, mod log summaries, audit entries, and limited post/comment body snapshots used to detect links added after submission.
 
-- `pnpm run dev`: Start Devvit playtest mode without dev fixture menu actions.
-- `MODLENS_ENABLE_DEV_SEED=true pnpm run dev`: Start playtest mode with dev fixture menu actions.
-- `pnpm run dev:seed`: Shortcut for playtest mode with `MODLENS_ENABLE_DEV_SEED=true`.
-- `pnpm run build`: Build the web app.
-- `pnpm run type-check`: Run TypeScript checks.
-- `pnpm run lint`: Run ESLint.
-- `pnpm run test`: Run Vitest.
-- `pnpm run deploy`: Type-check, lint, test, and upload a new Devvit version.
-- `pnpm run launch`: Upload and publish for review.
+ModLens uses moderator-scoped Reddit and Devvit permissions because it is a moderation app. Access is intended for authorized subreddit moderators.
+
+## External Services
+
+ModLens can share limited data externally only when optional features are configured:
+
+- **Google Gemini:** Optional AI insights may send compact moderation facts to Gemini. Raw Reddit content is not intentionally sent by the micro-insight adapter.
+- **Discord, Slack, or custom webhooks:** Optional alerts may send alert payloads to configured webhook URLs. Payloads can include moderation context such as queue links, usernames, domains, report context, modmail snippets, and item identifiers.
+
+If these features are not configured, ModLens does not send those optional external requests.
+
+## Privacy
+
+ModLens does not sell personal information and does not use moderation information for advertising. Moderators should avoid entering unnecessary sensitive personal information into notes, domain notes, rule names, removal templates, or alert settings.
+
+For full details, see the linked Privacy Policy and Terms and Conditions on the app listing.
+
+## Intended Users
+
+ModLens is built for subreddit moderation teams that need clearer queue context, shared memory, and repeatable decision support. It is not a replacement for moderator judgment. Moderators remain responsible for reviewing content and applying subreddit rules, Reddit policies, and applicable law.
+
+## Support
+
+For questions or support, contact dev@maybecoded.com.

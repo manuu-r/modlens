@@ -5,9 +5,12 @@
     "dir": "dist/client",
     "entrypoints": {
       "default": {
-        "entry": "index.html",
-        "height": "tall",
+        "entry": "src/client/preview.html",
+        "height": "regular",
         "inline": true
+      },
+      "app": {
+        "entry": "src/client/index.html"
       }
     }
   },
