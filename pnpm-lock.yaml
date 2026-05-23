@@ -25,13 +25,13 @@ importers:
         version: 0.12.24(twirp-ts@2.5.0)
       '@hono/node-server':
         specifier: 2.0.2
-        version: 2.0.2(hono@4.12.18)
+        version: 2.0.2(hono@4.12.22)
       devvit:
         specifier: 0.12.24
         version: 0.12.24(@devvit/server@0.12.24(twirp-ts@2.5.0))(@devvit/shared@0.12.24(twirp-ts@2.5.0))(@types/node@25.6.2)(google-protobuf@3.21.4)(typescript@6.0.3)
       hono:
-        specifier: 4.12.18
-        version: 4.12.18
+        specifier: 4.12.22
+        version: 4.12.22
     devDependencies:
       '@eslint/js':
         specifier: 10.0.1
@@ -1380,8 +1380,8 @@ packages:
     resolution: {integrity: sha512-ej4AhfhfL2Q2zpMmLo7U1Uv9+PyhIZpgQLGT1F9miIGmiCJIoCgSmczFdrc97mWT4kVY72KA+WnnhJ5pghSvSg==}
     engines: {node: '>= 0.4'}
 
-  hono@4.12.18:
-    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+  hono@4.12.22:
+    resolution: {integrity: sha512-7fvVPbB92zNRsQke+uiRGwtTuef0tB2Dg4hWxYfFNvkQhIltWoyi0ONReM5LWA+jJWS3nfT5lTq+qbsIpX0IQw==}
     engines: {node: '>=16.9.0'}
 
   hotscript@1.0.13:
@@ -2933,9 +2933,9 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
-  '@hono/node-server@2.0.2(hono@4.12.18)':
+  '@hono/node-server@2.0.2(hono@4.12.22)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.12.22
 
   '@humanfs/core@0.19.2':
     dependencies:
@@ -3997,7 +3997,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  hono@4.12.18: {}
+  hono@4.12.22: {}
 
   hotscript@1.0.13: {}
 
